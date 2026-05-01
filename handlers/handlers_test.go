@@ -1079,20 +1079,14 @@ func TestFloatingSummaryPresentWithoutEntries(t *testing.T) {
 		t.Error("Floating summary HTML element should be present even without entries")
 	}
 
-	// Verify the scroll handler JavaScript is present and runs before any early returns
-	// The scroll handler must be set up before checking for entriesList
-	if !strings.Contains(body, "window.addEventListener('scroll', checkScroll") {
-		t.Error("Floating summary scroll handler should be present")
+	// Verify the dashboard JavaScript is loaded (scroll handler logic is in external file)
+	if !strings.Contains(body, `src="/static/js/dashboard.js"`) {
+		t.Error("Dashboard JavaScript should be loaded")
 	}
 
-	// Verify the scroll handler is defined before the entriesList check
-	scrollHandlerPos := strings.Index(body, "window.addEventListener('scroll', checkScroll")
-	entriesListCheckPos := strings.Index(body, "if (!entriesList) return")
-
-	if scrollHandlerPos == -1 || entriesListCheckPos == -1 {
-		t.Error("Could not find scroll handler or entriesList check in page")
-	} else if scrollHandlerPos > entriesListCheckPos {
-		t.Error("Scroll handler must be set up BEFORE the entriesList early return check")
+	// Verify dashboard config element is present for JS to read
+	if !strings.Contains(body, `id="dashboardConfig"`) {
+		t.Error("Dashboard config element should be present for JavaScript")
 	}
 }
 

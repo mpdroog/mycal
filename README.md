@@ -107,10 +107,16 @@ mycal/
 │   ├── foods.go         # Foods/recipes CRUD
 │   ├── ingredients.go   # Ingredients CRUD + CSV import
 │   └── profile.go       # User profile/goals
-├── templates/           # HTML templates
+├── templates/           # HTML templates (Go templates)
 ├── static/
 │   ├── css/             # Bootstrap + custom styles
-│   └── js/              # Bootstrap + Fuse.js
+│   └── js/
+│       ├── dashboard.js # Dashboard page logic
+│       ├── food-form.js # Food form logic
+│       ├── bootstrap.bundle.min.js
+│       └── fuse.min.js  # Fuzzy search library
+├── eslint.config.js     # ESLint configuration
+├── package.json         # Node.js dependencies (dev only)
 └── data/
     ├── mycal.db         # SQLite database (created on first run)
     └── ingredients.csv  # Starter ingredients for import
@@ -119,16 +125,22 @@ mycal/
 ## Development
 
 ```bash
+# Install JS dependencies (for linting)
+npm install
+
 # Run tests
 make test
 
-# Run linter
+# Run Go linter
 make lint
+
+# Run JS linter (ESLint)
+make lint-js
 
 # Build binary
 make build
 
-# Run all checks (lint + test)
+# Run all checks (lint + lint-js + test)
 make check
 
 # Clean build artifacts

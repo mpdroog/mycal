@@ -2,3 +2,11 @@ mycal
 data/mycal.db
 .DS_Store
 example
+
+# Node.js (for ESLint)
+node_modules/
+package-lock.json
+
+# Test coverage
+coverage.out
+coverage.html

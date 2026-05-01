@@ -7,7 +7,7 @@
         <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#importSection">
             Import CSV
         </button>
-        <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
+        <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center icon-circle-sm">+</a>
     </div>
 </div>
 
@@ -38,7 +38,7 @@
     <ul class="list-unstyled mb-0">
         {{range .Ingredients}}
         <li class="d-flex align-items-center p-3 border-bottom gap-3">
-            <div class="food-icon rounded-circle bg-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+            <div class="food-icon rounded-circle bg-secondary d-flex align-items-center justify-content-center flex-shrink-0 icon-circle-md">
                 <span>🥗</span>
             </div>
             <div class="flex-grow-1 min-width-0">
@@ -51,7 +51,7 @@
                 <span>F: {{printf "%.1f" .Fat}}g</span>
             </div>
             <div class="dropdown flex-shrink-0">
-                <button class="btn btn-outline-secondary d-flex align-items-center justify-content-center" type="button" data-bs-toggle="dropdown" style="width: 44px; height: 44px; font-size: 1.25rem;">
+                <button class="btn btn-outline-secondary d-flex align-items-center justify-content-center menu-btn" type="button" data-bs-toggle="dropdown">
                     ⋮
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">

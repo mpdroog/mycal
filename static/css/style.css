@@ -108,3 +108,78 @@
 .min-width-0 {
     min-width: 0;
 }
+
+/* Input widths */
+.servings-input-width {
+    width: 70px;
+}
+
+.amount-input-width {
+    width: 80px;
+}
+
+/* Search results dropdown */
+.search-dropdown {
+    z-index: 1050;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.search-dropdown-sm {
+    z-index: 1050;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.search-result {
+    cursor: pointer;
+}
+
+/* Floating summary bar */
+.floating-summary {
+    z-index: 1000;
+}
+
+/* Entries card spacing for floating bar */
+.entries-card {
+    margin-bottom: 60px;
+}
+
+/* Progress bar thin */
+.progress-thin {
+    height: 4px;
+}
+
+/* Icon circles */
+.icon-circle-sm {
+    width: 36px;
+    height: 36px;
+}
+
+.icon-circle-md {
+    width: 48px;
+    height: 48px;
+}
+
+/* Menu button */
+.menu-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.25rem;
+}
+
+/* Error details pre */
+.error-details {
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Search result hover state */
+.search-result.active {
+    background-color: var(--bs-tertiary-bg);
+}
+
+/* Entry row disabled state */
+.entry-row.disabled {
+    opacity: 0.4;
+}

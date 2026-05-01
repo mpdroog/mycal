@@ -1,6 +1,11 @@
 {{template "base" .}}
 
 {{define "content"}}
+<!-- Configuration for JavaScript -->
+<script id="foodFormConfig" type="application/json"
+    data-ingredients='[{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"protein":{{$ing.Protein}},"carbs":{{$ing.Carbs}},"fat":{{$ing.Fat}},"serving":"{{$ing.ServingSize}}"}{{end}}]'>
+</script>
+
 <div class="mb-3">
     <h5>{{.Title}}</h5>
 </div>
@@ -24,7 +29,7 @@
                             <span class="fw-medium">{{.Ingredient.Name}}</span>
                             <small class="text-secondary">({{.Ingredient.Calories}} kcal/{{.Ingredient.ServingSize}})</small>
                         </div>
-                        <input type="number" class="form-control form-control-sm amount-input" style="width: 80px;" value="{{printf "%.0f" .AmountGrams}}" step="1" min="1" placeholder="g">
+                        <input type="number" class="form-control form-control-sm amount-input amount-input-width" value="{{printf "%.0f" .AmountGrams}}" step="1" min="1" placeholder="g">
                         <span class="text-secondary">g</span>
                         <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">×</button>
                     </div>
@@ -32,7 +37,7 @@
                 </div>
                 <div class="position-relative">
                     <input type="text" id="ingredientSearch" class="form-control" placeholder="Search ingredients..." autocomplete="off">
-                    <div id="ingredientSearchResults" class="position-absolute w-100 bg-dark border rounded-bottom shadow-lg d-none" style="z-index: 1050; max-height: 250px; overflow-y: auto;"></div>
+                    <div id="ingredientSearchResults" class="position-absolute w-100 bg-dark border rounded-bottom shadow-lg d-none search-dropdown-sm"></div>
                 </div>
             </div>
 
@@ -67,183 +72,5 @@
     </div>
 </div>
 
-<script>
-// Ingredient data for fuzzy search
-const ingredientsData = [
-    {{range .Ingredients}}
-    { id: {{.ID}}, name: '{{.Name}}', calories: {{.Calories}}, protein: {{.Protein}}, carbs: {{.Carbs}}, fat: {{.Fat}}, serving: '{{.ServingSize}}' },
-    {{end}}
-];
-
-// Initialize Fuse.js
-const ingredientFuse = new Fuse(ingredientsData, {
-    keys: ['name'],
-    threshold: 0.4,
-    distance: 100,
-    includeScore: true,
-    minMatchCharLength: 1,
-    ignoreLocation: true,
-});
-
-document.addEventListener('DOMContentLoaded', function() {
-    const ingredientsList = document.getElementById('ingredientsList');
-    const ingredientSearch = document.getElementById('ingredientSearch');
-    const searchResults = document.getElementById('ingredientSearchResults');
-    const form = document.getElementById('foodForm');
-    const ingredientsJson = document.getElementById('ingredientsJson');
-
-    function updateTotals() {
-        const rows = ingredientsList.querySelectorAll('.ingredient-row');
-        let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
-
-        rows.forEach(row => {
-            const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
-            const ratio = amount / 100;
-            totalCal += (parseFloat(row.dataset.calories) || 0) * ratio;
-            totalPro += (parseFloat(row.dataset.protein) || 0) * ratio;
-            totalCarb += (parseFloat(row.dataset.carbs) || 0) * ratio;
-            totalFat += (parseFloat(row.dataset.fat) || 0) * ratio;
-        });
-
-        document.getElementById('totalCalories').textContent = Math.round(totalCal);
-        document.getElementById('totalProtein').textContent = Math.round(totalPro) + 'g';
-        document.getElementById('totalCarbs').textContent = Math.round(totalCarb) + 'g';
-        document.getElementById('totalFat').textContent = Math.round(totalFat) + 'g';
-    }
-
-    function collectIngredients() {
-        const rows = ingredientsList.querySelectorAll('.ingredient-row');
-        const ingredients = [];
-        rows.forEach(row => {
-            const id = parseInt(row.dataset.id);
-            const amount = parseFloat(row.querySelector('.amount-input').value) || 100;
-            ingredients.push({ ingredient_id: id, amount_grams: amount });
-        });
-        ingredientsJson.value = JSON.stringify(ingredients);
-    }
-
-    function addIngredient(item) {
-        // Check if already added
-        if (ingredientsList.querySelector(`[data-id="${item.id}"]`)) {
-            showError('Ingredient already added', 'This ingredient is already in the list.');
-            return;
-        }
-
-        const row = document.createElement('div');
-        row.className = 'd-flex align-items-center gap-2 mb-2 ingredient-row';
-        row.dataset.id = item.id;
-        row.dataset.calories = item.calories;
-        row.dataset.protein = item.protein;
-        row.dataset.carbs = item.carbs;
-        row.dataset.fat = item.fat;
-        row.innerHTML = `
-            <div class="flex-grow-1">
-                <span class="fw-medium">${item.name}</span>
-                <small class="text-secondary">(${item.calories} kcal/${item.serving})</small>
-            </div>
-            <input type="number" class="form-control form-control-sm amount-input" style="width: 80px;" value="100" step="1" min="1" placeholder="g">
-            <span class="text-secondary">g</span>
-            <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">×</button>
-        `;
-        ingredientsList.appendChild(row);
-        ingredientSearch.value = '';
-        searchResults.classList.add('d-none');
-        updateTotals();
-    }
-
-    // Search input handler
-    ingredientSearch.addEventListener('input', function() {
-        const query = this.value.trim();
-
-        if (query.length === 0) {
-            searchResults.classList.add('d-none');
-            searchResults.innerHTML = '';
-            return;
-        }
-
-        const results = ingredientFuse.search(query).slice(0, 8);
-
-        if (results.length === 0) {
-            searchResults.innerHTML = '<div class="p-3 text-secondary">No matches found</div>';
-            searchResults.classList.remove('d-none');
-            return;
-        }
-
-        searchResults.innerHTML = results.map((result, index) => {
-            const item = result.item;
-            return `
-                <div class="search-result p-2 border-bottom" data-index="${index}" style="cursor: pointer;">
-                    <div class="fw-medium">${item.name}</div>
-                    <small class="text-secondary">${item.calories} kcal/${item.serving} · P: ${item.protein}g C: ${item.carbs}g F: ${item.fat}g</small>
-                </div>
-            `;
-        }).join('');
-
-        searchResults.classList.remove('d-none');
-        searchResults.dataset.results = JSON.stringify(results.map(r => r.item));
-    });
-
-    // Handle result click
-    searchResults.addEventListener('click', function(e) {
-        const resultEl = e.target.closest('.search-result');
-        if (!resultEl) return;
-
-        const index = parseInt(resultEl.dataset.index);
-        const results = JSON.parse(this.dataset.results);
-        addIngredient(results[index]);
-    });
-
-    // Keyboard navigation
-    ingredientSearch.addEventListener('keydown', function(e) {
-        const items = searchResults.querySelectorAll('.search-result');
-        let activeIndex = -1;
-        items.forEach((item, i) => { if (item.style.backgroundColor) activeIndex = i; });
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            activeIndex = Math.min(activeIndex + 1, items.length - 1);
-            items.forEach((item, i) => item.style.backgroundColor = i === activeIndex ? 'var(--bs-tertiary-bg)' : '');
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            activeIndex = Math.max(activeIndex - 1, 0);
-            items.forEach((item, i) => item.style.backgroundColor = i === activeIndex ? 'var(--bs-tertiary-bg)' : '');
-        } else if (e.key === 'Enter' && activeIndex >= 0) {
-            e.preventDefault();
-            const results = JSON.parse(searchResults.dataset.results || '[]');
-            if (results[activeIndex]) {
-                addIngredient(results[activeIndex]);
-            }
-        } else if (e.key === 'Escape') {
-            searchResults.classList.add('d-none');
-        }
-    });
-
-    // Close results when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!ingredientSearch.contains(e.target) && !searchResults.contains(e.target)) {
-            searchResults.classList.add('d-none');
-        }
-    });
-
-    ingredientsList.addEventListener('click', function(e) {
-        if (e.target.classList.contains('remove-ingredient')) {
-            e.target.closest('.ingredient-row').remove();
-            updateTotals();
-        }
-    });
-
-    // Update totals when amount changes
-    ingredientsList.addEventListener('input', function(e) {
-        if (e.target.classList.contains('amount-input')) {
-            updateTotals();
-        }
-    });
-
-    form.addEventListener('submit', function() {
-        collectIngredients();
-    });
-
-    updateTotals();
-});
-</script>
+<script src="/static/js/food-form.js"></script>
 {{end}}

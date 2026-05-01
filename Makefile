@@ -1,10 +1,10 @@
-.PHONY: all build run clean lint lint-fix test test-cover deps check
+.PHONY: all build run clean lint lint-fix lint-js lint-js-fix test test-cover deps check
 
 BINARY=mycal
 CGO_ENABLED=0
 GOBIN=$(shell go env GOPATH)/bin
 
-all: lint test build
+all: lint lint-js test build
 
 build:
 	CGO_ENABLED=$(CGO_ENABLED) go build -o $(BINARY) .
@@ -22,6 +22,12 @@ lint:
 lint-fix:
 	$(GOBIN)/golangci-lint run --config .golangci.yml --fix
 
+lint-js:
+	npx eslint 'static/js/**/*.js' --ignore-pattern '*.min.js'
+
+lint-js-fix:
+	npx eslint 'static/js/**/*.js' --ignore-pattern '*.min.js' --fix
+
 test:
 	go test -v ./...
 
@@ -33,7 +39,7 @@ deps:
 	go mod download
 	go mod tidy
 
-check: lint test
+check: lint lint-js test
 	@echo "All checks passed!"
 
 install-tools:

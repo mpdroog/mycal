@@ -1,0 +1,14 @@
+{
+  "name": "mycal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint 'static/js/**/*.js' --ignore-pattern '*.min.js'",
+    "lint:fix": "eslint 'static/js/**/*.js' --ignore-pattern '*.min.js' --fix"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "@eslint/js": "^9.0.0",
+    "globals": "^16.0.0"
+  }
+}
