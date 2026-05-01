@@ -61,12 +61,48 @@
 .calorie-ring-inner {
     text-align: center;
     z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 /* Progress bar background for dark mode */
 .summary-header .progress {
     background-color: rgba(255, 255, 255, 0.2);
 }
+
+.summary-header .progress-bar {
+    transition: width 0.5s ease-out;
+}
+
+/* Animated number pop effect */
+.value-pop {
+    animation: valuePop 0.4s ease-out;
+    display: inline-block;
+}
+
+@keyframes valuePop {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.5); text-shadow: 0 0 10px rgba(255,255,255,0.8); }
+    100% { transform: scale(1); }
+}
+
+/* Calorie ring pulse */
+.ring-pulse {
+    animation: ringPulse 0.5s ease-out;
+}
+
+@keyframes ringPulse {
+    0% { transform: rotate(-90deg) scale(1); }
+    50% { transform: rotate(-90deg) scale(1.08); }
+    100% { transform: rotate(-90deg) scale(1); }
+}
+
+/* Entry row fade when toggled off */
+.entry-row {
+    transition: opacity 0.3s ease;
+}
+
 
 /* Min width utility */
 .min-width-0 {

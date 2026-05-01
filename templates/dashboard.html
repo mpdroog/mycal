@@ -12,7 +12,7 @@
     </div>
 
     <div class="d-flex align-items-center justify-content-center gap-4 mb-4">
-        <div class="text-center">
+        <div class="d-flex flex-column align-items-center">
             <div class="fs-4 fw-bold">{{.Summary.Calories}}</div>
             <small class="opacity-75">eaten</small>
         </div>
@@ -26,7 +26,7 @@
                 <small class="opacity-75">kcal</small>
             </div>
         </div>
-        <div class="text-center">
+        <div class="d-flex flex-column align-items-center">
             <div class="fs-4 fw-bold">{{.Profile.CaloriesGoal}}</div>
             <small class="opacity-75">goal</small>
         </div>
@@ -320,6 +320,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const goalCarbs = {{.Profile.CarbsGoal}};
     const goalFat = {{.Profile.FatGoal}};
 
+    // Store previous values for animation
+    let prevTotals = { cal: null, pro: null, carb: null, fat: null };
+
+    function animatePop(element) {
+        element.classList.remove('value-pop');
+        void element.offsetWidth; // Trigger reflow
+        element.classList.add('value-pop');
+    }
+
     function updateTotals() {
         let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
 
@@ -362,21 +371,34 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
+        // Check if values changed for animations
+        const calChanged = prevTotals.cal !== null && prevTotals.cal !== totalCal;
+        const proChanged = prevTotals.pro !== null && Math.round(prevTotals.pro) !== Math.round(totalPro);
+        const carbChanged = prevTotals.carb !== null && Math.round(prevTotals.carb) !== Math.round(totalCarb);
+        const fatChanged = prevTotals.fat !== null && Math.round(prevTotals.fat) !== Math.round(totalFat);
+
         // Update header displays
-        document.querySelectorAll('.summary-header .fs-4.fw-bold').forEach((el, i) => {
-            if (i === 0) el.textContent = totalCal; // eaten
-            if (i === 1) el.textContent = totalCal; // ring center
+        const headerValues = document.querySelectorAll('.summary-header .fs-4.fw-bold');
+        headerValues.forEach((el, i) => {
+            if (i === 0 || i === 1) {
+                el.textContent = totalCal;
+                if (calChanged) animatePop(el);
+            }
         });
 
-        // Update macro displays
+        // Update macro displays with animations
         const macroValues = document.querySelectorAll('.macro-progress .fw-bold');
         if (macroValues.length >= 3) {
             macroValues[0].textContent = Math.round(totalCarb);
             macroValues[1].textContent = Math.round(totalPro);
             macroValues[2].textContent = Math.round(totalFat);
+
+            if (carbChanged) animatePop(macroValues[0]);
+            if (proChanged) animatePop(macroValues[1]);
+            if (fatChanged) animatePop(macroValues[2]);
         }
 
-        // Update progress bars
+        // Update progress bars (CSS transition handles animation)
         const progressBars = document.querySelectorAll('.macro-progress .progress-bar');
         if (progressBars.length >= 3) {
             progressBars[0].style.width = Math.min(100, (totalCarb / goalCarbs) * 100) + '%';
@@ -384,22 +406,45 @@ document.addEventListener('DOMContentLoaded', function() {
             progressBars[2].style.width = Math.min(100, (totalFat / goalFat) * 100) + '%';
         }
 
-        // Update calorie ring
+        // Update calorie ring with animation
         const ringProgress = document.querySelector('.calorie-ring-progress');
+        const ringSvg = document.querySelector('.calorie-ring-svg');
         if (ringProgress) {
             const pct = Math.min(100, (totalCal / goalCalories) * 100);
             ringProgress.setAttribute('stroke-dasharray', pct + ', 100');
+
+            if (calChanged && ringSvg) {
+                ringSvg.classList.remove('ring-pulse');
+                void ringSvg.offsetWidth;
+                ringSvg.classList.add('ring-pulse');
+            }
         }
 
-        // Update floating summary
+        // Update floating summary with animations
         const floatCal = document.getElementById('floatCal');
         const floatPro = document.getElementById('floatPro');
         const floatCarb = document.getElementById('floatCarb');
         const floatFat = document.getElementById('floatFat');
-        if (floatCal) floatCal.textContent = totalCal;
-        if (floatPro) floatPro.textContent = Math.round(totalPro);
-        if (floatCarb) floatCarb.textContent = Math.round(totalCarb);
-        if (floatFat) floatFat.textContent = Math.round(totalFat);
+
+        if (floatCal) {
+            floatCal.textContent = totalCal;
+            if (calChanged) animatePop(floatCal);
+        }
+        if (floatPro) {
+            floatPro.textContent = Math.round(totalPro);
+            if (proChanged) animatePop(floatPro);
+        }
+        if (floatCarb) {
+            floatCarb.textContent = Math.round(totalCarb);
+            if (carbChanged) animatePop(floatCarb);
+        }
+        if (floatFat) {
+            floatFat.textContent = Math.round(totalFat);
+            if (fatChanged) animatePop(floatFat);
+        }
+
+        // Store current values for next comparison
+        prevTotals = { cal: totalCal, pro: totalPro, carb: totalCarb, fat: totalFat };
     }
 
     entriesList.addEventListener('change', function(e) {
