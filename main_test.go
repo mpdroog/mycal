@@ -101,6 +101,9 @@ func loadTestTemplates() (*Templates, error) {
 
 			return int(pct)
 		},
+		"intToFloat": func(i int) float64 {
+			return float64(i)
+		},
 	}
 
 	base := filepath.Join("templates", "base.html")

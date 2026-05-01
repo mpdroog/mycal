@@ -60,6 +60,9 @@ var funcMap = template.FuncMap{
 
 		return int(pct)
 	},
+	"intToFloat": func(i int) float64 {
+		return float64(i)
+	},
 }
 
 // Templates holds all parsed page templates.

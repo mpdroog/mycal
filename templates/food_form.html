@@ -19,7 +19,7 @@
                 <label class="form-label">Ingredients</label>
                 <div id="ingredientsList" class="mb-2">
                     {{range .Food.Ingredients}}
-                    <div class="d-flex align-items-center gap-2 mb-2 ingredient-row" data-id="{{.IngredientID}}">
+                    <div class="d-flex align-items-center gap-2 mb-2 ingredient-row" data-id="{{.IngredientID}}" data-calories="{{.Ingredient.Calories}}" data-protein="{{.Ingredient.Protein}}" data-carbs="{{.Ingredient.Carbs}}" data-fat="{{.Ingredient.Fat}}">
                         <div class="flex-grow-1">
                             <span class="fw-medium">{{.Ingredient.Name}}</span>
                             <small class="text-secondary">({{.Ingredient.Calories}} kcal/{{.Ingredient.ServingSize}})</small>
@@ -34,7 +34,7 @@
                     <select id="ingredientSelect" class="form-select">
                         <option value="">Add ingredient...</option>
                         {{range .Ingredients}}
-                        <option value="{{.ID}}" data-name="{{.Name}}" data-calories="{{.Calories}}" data-serving="{{.ServingSize}}">{{.Name}} ({{.Calories}} kcal/{{.ServingSize}})</option>
+                        <option value="{{.ID}}" data-name="{{.Name}}" data-calories="{{.Calories}}" data-protein="{{.Protein}}" data-carbs="{{.Carbs}}" data-fat="{{.Fat}}" data-serving="{{.ServingSize}}">{{.Name}} ({{.Calories}} kcal/{{.ServingSize}})</option>
                         {{end}}
                     </select>
                     <button type="button" class="btn btn-outline-secondary" id="addIngredient">Add</button>
@@ -81,9 +81,22 @@ document.addEventListener('DOMContentLoaded', function() {
     const ingredientsJson = document.getElementById('ingredientsJson');
 
     function updateTotals() {
-        // This is a simplified version - actual calculation would need ingredient data
         const rows = ingredientsList.querySelectorAll('.ingredient-row');
-        document.getElementById('totalCalories').textContent = rows.length > 0 ? '~' : '0';
+        let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
+
+        rows.forEach(row => {
+            const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+            const ratio = amount / 100;
+            totalCal += (parseFloat(row.dataset.calories) || 0) * ratio;
+            totalPro += (parseFloat(row.dataset.protein) || 0) * ratio;
+            totalCarb += (parseFloat(row.dataset.carbs) || 0) * ratio;
+            totalFat += (parseFloat(row.dataset.fat) || 0) * ratio;
+        });
+
+        document.getElementById('totalCalories').textContent = Math.round(totalCal);
+        document.getElementById('totalProtein').textContent = Math.round(totalPro) + 'g';
+        document.getElementById('totalCarbs').textContent = Math.round(totalCarb) + 'g';
+        document.getElementById('totalFat').textContent = Math.round(totalFat) + 'g';
     }
 
     function collectIngredients() {
@@ -105,6 +118,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const id = option.value;
         const name = option.dataset.name;
         const calories = option.dataset.calories;
+        const protein = option.dataset.protein;
+        const carbs = option.dataset.carbs;
+        const fat = option.dataset.fat;
         const serving = option.dataset.serving;
 
         // Check if already added
@@ -116,6 +132,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const row = document.createElement('div');
         row.className = 'd-flex align-items-center gap-2 mb-2 ingredient-row';
         row.dataset.id = id;
+        row.dataset.calories = calories;
+        row.dataset.protein = protein;
+        row.dataset.carbs = carbs;
+        row.dataset.fat = fat;
         row.innerHTML = `
             <div class="flex-grow-1">
                 <span class="fw-medium">${name}</span>
@@ -133,6 +153,13 @@ document.addEventListener('DOMContentLoaded', function() {
     ingredientsList.addEventListener('click', function(e) {
         if (e.target.classList.contains('remove-ingredient')) {
             e.target.closest('.ingredient-row').remove();
+            updateTotals();
+        }
+    });
+
+    // Update totals when amount changes
+    ingredientsList.addEventListener('input', function(e) {
+        if (e.target.classList.contains('amount-input')) {
             updateTotals();
         }
     });

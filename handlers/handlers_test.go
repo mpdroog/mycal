@@ -110,6 +110,9 @@ func loadTestTemplates() (*TestTemplates, error) {
 
 			return int(pct)
 		},
+		"intToFloat": func(i int) float64 {
+			return float64(i)
+		},
 	}
 
 	// Find templates directory (relative to test location)

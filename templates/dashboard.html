@@ -16,6 +16,10 @@
             <small class="opacity-75">eaten</small>
         </div>
         <div class="calorie-ring">
+            <svg viewBox="0 0 36 36" class="calorie-ring-svg">
+                <path class="calorie-ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                <path class="calorie-ring-progress" stroke-dasharray="{{percentage (intToFloat .Summary.Calories) (intToFloat .Profile.CaloriesGoal)}}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+            </svg>
             <div class="calorie-ring-inner">
                 <div class="fs-4 fw-bold">{{.Summary.Calories}}</div>
                 <small class="opacity-75">kcal</small>
