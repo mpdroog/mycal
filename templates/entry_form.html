@@ -1,44 +1,46 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="page-header">
-    <h2>{{.Title}}</h2>
+<div class="mb-3">
+    <h5>{{.Title}}</h5>
 </div>
 
 <div class="card">
-    <form method="POST" class="entry-form">
-        <div class="form-group">
-            <label for="food_id">Food</label>
-            <select name="food_id" id="food_id" required class="form-control">
-                {{range .Foods}}
-                <option value="{{.ID}}" {{if eq .ID $.Entry.FoodID}}selected{{end}}>{{.Name}} ({{.Calories}} cal)</option>
-                {{end}}
-            </select>
-        </div>
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="food_id" class="form-label">Food</label>
+                <select name="food_id" id="food_id" required class="form-select">
+                    {{range .Foods}}
+                    <option value="{{.ID}}" {{if eq .ID $.Entry.FoodID}}selected{{end}}>{{.Name}} ({{.Calories}} cal)</option>
+                    {{end}}
+                </select>
+            </div>
 
-        <div class="form-group">
-            <label for="meal">Meal</label>
-            <select name="meal" id="meal" class="form-control">
-                {{range .Meals}}
-                <option value="{{.}}" {{if eq . $.Entry.Meal}}selected{{end}}>{{. | title}}</option>
-                {{end}}
-            </select>
-        </div>
+            <div class="mb-3">
+                <label for="meal" class="form-label">Meal</label>
+                <select name="meal" id="meal" class="form-select">
+                    {{range .Meals}}
+                    <option value="{{.}}" {{if eq . $.Entry.Meal}}selected{{end}}>{{. | title}}</option>
+                    {{end}}
+                </select>
+            </div>
 
-        <div class="form-group">
-            <label for="servings">Servings</label>
-            <input type="number" id="servings" name="servings" value="{{printf "%.2g" .Entry.Servings}}" step="0.25" min="0.25" class="form-control">
-        </div>
+            <div class="mb-3">
+                <label for="servings" class="form-label">Servings</label>
+                <input type="number" id="servings" name="servings" value="{{printf "%.2g" .Entry.Servings}}" step="0.25" min="0.25" class="form-control">
+            </div>
 
-        <div class="form-group">
-            <label for="notes">Notes (optional)</label>
-            <input type="text" id="notes" name="notes" value="{{.Entry.Notes}}" class="form-control" placeholder="Any notes...">
-        </div>
+            <div class="mb-3">
+                <label for="notes" class="form-label">Notes (optional)</label>
+                <input type="text" id="notes" name="notes" value="{{.Entry.Notes}}" class="form-control" placeholder="Any notes...">
+            </div>
 
-        <div class="form-actions">
-            <a href="/?date={{.Entry.Date}}" class="btn">Cancel</a>
-            <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-    </form>
+            <div class="d-flex gap-2 justify-content-end">
+                <a href="/?date={{.Entry.Date}}" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-success">Save</button>
+            </div>
+        </form>
+    </div>
 </div>
 {{end}}

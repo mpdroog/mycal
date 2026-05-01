@@ -290,7 +290,7 @@ func TestStaticFilesServed(t *testing.T) {
 		t.Errorf("Static CSS: expected 200, got %d", status)
 	}
 
-	if !strings.Contains(body, "navbar") {
+	if !strings.Contains(body, "container-narrow") {
 		t.Error("CSS file does not contain expected styles")
 	}
 }

@@ -397,8 +397,8 @@ func TestDashboardHTMLStructure(t *testing.T) {
 	}{
 		{"DOCTYPE", "<!DOCTYPE html>"},
 		{"title tag", "<title>Today - MyCal</title>"},
-		{"navbar", `class="navbar"`},
-		{"Today nav link", `href="/" class="active">Today</a>`},
+		{"navbar", `class="navbar`},
+		{"Today nav link", `href="/" class="nav-link active">Today</a>`},
 		{"Foods nav link", `href="/foods"`},
 		{"Daily Total section", "Daily Total"},
 		{"Calories display", "Calories"},
@@ -430,10 +430,10 @@ func TestFoodsPageHTMLStructure(t *testing.T) {
 	}{
 		{"DOCTYPE", "<!DOCTYPE html>"},
 		{"title tag", "<title>Foods - MyCal</title>"},
-		{"navbar", `class="navbar"`},
-		{"Foods nav active", `href="/foods" class="active">Foods</a>`},
+		{"navbar", `class="navbar`},
+		{"Foods nav active", `href="/foods" class="nav-link active">Foods</a>`},
 		{"Add Food button", `href="/foods/new"`},
-		{"Foods heading", "<h2>Foods</h2>"},
+		{"Foods heading", ">Foods</h5>"},
 	}
 
 	for _, check := range checks {

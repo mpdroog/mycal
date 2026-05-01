@@ -1,23 +1,30 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#4a7c59">
+    <meta name="theme-color" content="#212529">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>{{.Title}} - MyCal</title>
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <nav class="navbar">
-        <a href="/" class="nav-brand">MyCal</a>
-        <div class="nav-links">
-            <a href="/" class="{{if eq .Title "Today"}}active{{end}}">Today</a>
-            <a href="/foods" class="{{if eq .Title "Foods"}}active{{end}}">Foods</a>
+    <nav class="navbar navbar-expand navbar-dark bg-success sticky-top">
+        <div class="container">
+            <a href="/" class="navbar-brand fw-bold">MyCal</a>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a href="/" class="nav-link {{if eq .Title "Today"}}active{{end}}">Today</a>
+                </li>
+                <li class="nav-item">
+                    <a href="/foods" class="nav-link {{if eq .Title "Foods"}}active{{end}}">Foods</a>
+                </li>
+            </ul>
         </div>
     </nav>
-    <main class="container">
+    <main class="container container-narrow py-3">
         {{block "content" .}}{{end}}
     </main>
 </body>
