@@ -31,6 +31,14 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		// Get all ingredients for the dropdown
+		ingredients, err := GetAllIngredients()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
 		// Get profile for goals
 		profile, err := GetProfile()
 		if err != nil {
@@ -40,12 +48,13 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		data := map[string]interface{}{
-			"Title":   "Today",
-			"Date":    date,
-			"Summary": summary,
-			"Foods":   foods,
-			"Meals":   []string{"breakfast", "lunch", "dinner", "snack"},
-			"Profile": profile,
+			"Title":       "Today",
+			"Date":        date,
+			"Summary":     summary,
+			"Foods":       foods,
+			"Ingredients": ingredients,
+			"Meals":       []string{"breakfast", "lunch", "dinner", "snack"},
+			"Profile":     profile,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -61,11 +70,72 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foodID, err := strconv.ParseInt(r.FormValue("food_id"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid food_id", http.StatusBadRequest)
+	var foodID int64
 
-		return
+	// Check if ingredient_id is provided (quick add from ingredient)
+	if ingredientIDStr := r.FormValue("ingredient_id"); ingredientIDStr != "" {
+		ingredientID, err := strconv.ParseInt(ingredientIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid ingredient_id", http.StatusBadRequest)
+
+			return
+		}
+
+		// Get ingredient name
+		var ingredientName string
+
+		err = db.DB.QueryRow("SELECT name FROM ingredients WHERE id = ?", ingredientID).Scan(&ingredientName)
+		if err != nil {
+			http.Error(w, "ingredient not found", http.StatusBadRequest)
+
+			return
+		}
+
+		// Check if a simple food already exists for this ingredient
+		err = db.DB.QueryRow(`
+			SELECT f.id FROM foods f
+			JOIN food_ingredients fi ON f.id = fi.food_id
+			WHERE f.name = ? AND fi.ingredient_id = ? AND fi.amount_grams = 100
+			GROUP BY f.id HAVING COUNT(*) = 1
+		`, ingredientName, ingredientID).Scan(&foodID)
+
+		if err != nil {
+			// Create a simple food from this ingredient (100g)
+			result, err := db.DB.Exec("INSERT INTO foods (name) VALUES (?)", ingredientName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+
+			foodID, err = result.LastInsertId()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+
+			// Link ingredient to food (100g)
+			_, err = db.DB.Exec(`
+				INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams)
+				VALUES (?, ?, 100)
+			`, foodID, ingredientID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+		}
+	} else {
+		// Regular food_id
+		var err error
+
+		foodID, err = strconv.ParseInt(r.FormValue("food_id"), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid food_id", http.StatusBadRequest)
+
+			return
+		}
 	}
 
 	servings, err := strconv.ParseFloat(r.FormValue("servings"), 64)
@@ -234,6 +304,41 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
+}
+
+func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+
+		return
+	}
+
+	if parseErr := r.ParseForm(); parseErr != nil {
+		http.Error(w, parseErr.Error(), http.StatusBadRequest)
+
+		return
+	}
+
+	servings, err := strconv.ParseFloat(r.FormValue("servings"), 64)
+	if err != nil {
+		http.Error(w, "invalid servings value", http.StatusBadRequest)
+
+		return
+	}
+
+	if servings <= 0 {
+		servings = 0.25
+	}
+
+	_, err = db.DB.Exec(`UPDATE entries SET servings = ? WHERE id = ?`, servings, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func UpdateEntry(w http.ResponseWriter, r *http.Request) {

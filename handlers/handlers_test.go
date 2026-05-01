@@ -113,6 +113,9 @@ func loadTestTemplates() (*TestTemplates, error) {
 		"intToFloat": func(i int) float64 {
 			return float64(i)
 		},
+		"multiplyFloat": func(a, b float64) float64 {
+			return a * b
+		},
 	}
 
 	// Find templates directory (relative to test location)
@@ -191,6 +194,7 @@ func setupTestRouter() *chi.Mux {
 	r.Post("/entries", handlers.CreateEntry)
 	r.Get("/entries/{id}/edit", handlers.GetEntry(testTemplates.EntryForm))
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
+	r.Post("/entries/{id}/servings", handlers.UpdateEntryServings)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
 
 	// Profile
