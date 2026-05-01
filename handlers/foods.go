@@ -309,6 +309,22 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if any entries reference this food
+	var entryCount int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE food_id = ?", id).Scan(&entryCount)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	if entryCount > 0 {
+		http.Error(w, "Cannot delete food: it is used in diary entries. Delete the entries first.", http.StatusConflict)
+
+		return
+	}
+
 	_, err = db.DB.Exec("DELETE FROM foods WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

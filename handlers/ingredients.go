@@ -212,6 +212,22 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this ingredient is used in any foods
+	var usageCount int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM food_ingredients WHERE ingredient_id = ?", id).Scan(&usageCount)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	if usageCount > 0 {
+		http.Error(w, "Cannot delete ingredient: it is used in foods. Remove it from foods first.", http.StatusConflict)
+
+		return
+	}
+
 	_, err = db.DB.Exec("DELETE FROM ingredients WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

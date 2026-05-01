@@ -762,3 +762,248 @@ func TestDashboardShowsProfileGoals(t *testing.T) {
 		t.Error("Dashboard: expected fat goal '60g' from profile")
 	}
 }
+
+func TestDeleteEntryDoesNotAffectOtherEntries(t *testing.T) {
+	// Create an ingredient
+	form := url.Values{}
+	form.Set("name", "Test Entry Deletion Ingredient")
+	form.Set("calories", "100")
+	form.Set("protein", "10")
+	form.Set("carbs", "10")
+	form.Set("fat", "5")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Create a food with this ingredient
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Test Entry Deletion Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	form = url.Values{}
+	form.Set("name", "Test Entry Deletion Food")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Get the food ID
+	var foodID int64
+
+	err = db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Test Entry Deletion Food").Scan(&foodID)
+	if err != nil {
+		t.Fatalf("Could not find food: %v", err)
+	}
+
+	// Create two entries with this food
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-01', 'breakfast', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Could not create entry 1: %v", err)
+	}
+
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-01', 'lunch', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Could not create entry 2: %v", err)
+	}
+
+	// Get entry IDs
+	var entry1ID, entry2ID int64
+
+	rows, err := db.DB.Query("SELECT id FROM entries WHERE food_id = ? ORDER BY id", foodID)
+	if err != nil {
+		t.Fatalf("Could not query entries: %v", err)
+	}
+
+	if rows.Next() {
+		rows.Scan(&entry1ID)
+	}
+
+	if rows.Next() {
+		rows.Scan(&entry2ID)
+	}
+
+	rows.Close() // Close immediately before doing more DB operations
+
+	if entry1ID == 0 || entry2ID == 0 {
+		t.Fatal("Could not get entry IDs")
+	}
+
+	// Delete the first entry
+	req = httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entry1ID, 10)+"/delete", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("Delete entry: expected 303, got %d", rec.Code)
+	}
+
+	// Verify second entry still exists
+	var count int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE id = ?", entry2ID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Could not check entry 2: %v", err)
+	}
+
+	if count != 1 {
+		t.Error("Deleting one entry should not delete other entries")
+	}
+
+	// Verify the food still exists
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM foods WHERE id = ?", foodID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Could not check food: %v", err)
+	}
+
+	if count != 1 {
+		t.Error("Deleting an entry should not delete the food")
+	}
+
+	// Verify the ingredient still exists
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM ingredients WHERE id = ?", ingredientID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Could not check ingredient: %v", err)
+	}
+
+	if count != 1 {
+		t.Error("Deleting an entry should not delete the ingredient")
+	}
+}
+
+func TestCannotDeleteFoodWithEntries(t *testing.T) {
+	// Create an ingredient
+	form := url.Values{}
+	form.Set("name", "Protected Food Ingredient")
+	form.Set("calories", "100")
+	form.Set("protein", "10")
+	form.Set("carbs", "10")
+	form.Set("fat", "5")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Protected Food Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Create a food
+	form = url.Values{}
+	form.Set("name", "Protected Food")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var foodID int64
+
+	err = db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Protected Food").Scan(&foodID)
+	if err != nil {
+		t.Fatalf("Could not find food: %v", err)
+	}
+
+	// Create an entry using this food
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-02', 'dinner', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Could not create entry: %v", err)
+	}
+
+	// Try to delete the food - should fail
+	req = httptest.NewRequest(http.MethodPost, "/foods/"+strconv.FormatInt(foodID, 10)+"/delete", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("Delete food with entries: expected 409 Conflict, got %d", rec.Code)
+	}
+
+	// Verify food still exists
+	var count int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM foods WHERE id = ?", foodID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Could not check food: %v", err)
+	}
+
+	if count != 1 {
+		t.Error("Food should not be deleted when it has entries")
+	}
+}
+
+func TestCannotDeleteIngredientUsedInFoods(t *testing.T) {
+	// Create an ingredient
+	form := url.Values{}
+	form.Set("name", "Protected Ingredient")
+	form.Set("calories", "100")
+	form.Set("protein", "10")
+	form.Set("carbs", "10")
+	form.Set("fat", "5")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Protected Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Create a food using this ingredient
+	form = url.Values{}
+	form.Set("name", "Food Using Protected Ingredient")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Try to delete the ingredient - should fail
+	req = httptest.NewRequest(http.MethodPost, "/ingredients/"+strconv.FormatInt(ingredientID, 10)+"/delete", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("Delete ingredient used in food: expected 409 Conflict, got %d", rec.Code)
+	}
+
+	// Verify ingredient still exists
+	var count int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM ingredients WHERE id = ?", ingredientID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Could not check ingredient: %v", err)
+	}
+
+	if count != 1 {
+		t.Error("Ingredient should not be deleted when used in foods")
+	}
+}
