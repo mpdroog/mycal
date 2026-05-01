@@ -157,8 +157,8 @@ func TestDashboard(t *testing.T) {
 		t.Error("Dashboard: expected 'Today' in response body")
 	}
 
-	if !strings.Contains(body, "Daily Total") {
-		t.Error("Dashboard: expected 'Daily Total' in response body")
+	if !strings.Contains(body, "kcal") {
+		t.Error("Dashboard: expected 'kcal' in response body")
 	}
 }
 
@@ -237,8 +237,8 @@ func TestFoodCreateAndList(t *testing.T) {
 		t.Error("Food list: expected 'Test Chicken' in response after creation")
 	}
 
-	if !strings.Contains(body, "165 cal") {
-		t.Error("Food list: expected '165 cal' in response")
+	if !strings.Contains(body, "165 kcal") {
+		t.Error("Food list: expected '165 kcal' in response")
 	}
 }
 
@@ -400,11 +400,11 @@ func TestDashboardHTMLStructure(t *testing.T) {
 		{"navbar", `class="navbar`},
 		{"Today nav link", `href="/" class="nav-link active">Today</a>`},
 		{"Foods nav link", `href="/foods"`},
-		{"Daily Total section", "Daily Total"},
-		{"Calories display", "Calories"},
+		{"calorie display", "kcal"},
 		{"Protein display", "Protein"},
 		{"Carbs display", "Carbs"},
 		{"Fat display", "Fat"},
+		{"Calorie unit", "kcal"},
 		{"Add Entry form", `action="/entries"`},
 		{"Date picker", `type="date"`},
 	}

@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var DB *sql.DB
@@ -20,7 +20,7 @@ func Init(dataDir string) error {
 
 	var err error
 
-	DB, err = sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
+	DB, err = sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=strict(1)")
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}

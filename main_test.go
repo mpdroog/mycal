@@ -196,8 +196,8 @@ func TestDashboardLoads(t *testing.T) {
 		t.Error("Dashboard: missing title")
 	}
 
-	if !strings.Contains(body, "Daily Total") {
-		t.Error("Dashboard: missing Daily Total section")
+	if !strings.Contains(body, "kcal") {
+		t.Error("Dashboard: missing calorie display")
 	}
 }
 
@@ -258,7 +258,7 @@ func TestFoodCreateAndVerify(t *testing.T) {
 		t.Error("Foods list: created food not found")
 	}
 
-	if !strings.Contains(body, "150 cal") {
+	if !strings.Contains(body, "150 kcal") {
 		t.Error("Foods list: calorie count not found")
 	}
 }

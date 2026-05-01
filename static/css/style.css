@@ -1,3 +1,65 @@
 .container-narrow {
     max-width: 600px;
 }
+
+/* Accent color (teal from the example) */
+.text-accent {
+    color: #26a69a !important;
+}
+
+.bg-accent {
+    background-color: #26a69a !important;
+}
+
+.btn-accent {
+    background-color: #26a69a;
+    border-color: #26a69a;
+    color: #fff;
+}
+
+.btn-accent:hover {
+    background-color: #1e8e82;
+    border-color: #1e8e82;
+    color: #fff;
+}
+
+/* Summary header gradient */
+.summary-header {
+    background: linear-gradient(135deg, #26a69a 0%, #4db6ac 100%);
+}
+
+/* Calorie ring */
+.calorie-ring {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+.calorie-ring::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 4px solid transparent;
+    border-top-color: #fff;
+    border-right-color: #fff;
+}
+
+.calorie-ring-inner {
+    text-align: center;
+}
+
+/* Progress bar background for dark mode */
+.summary-header .progress {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Min width utility */
+.min-width-0 {
+    min-width: 0;
+}

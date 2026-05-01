@@ -3,37 +3,72 @@
 {{define "content"}}
 <div class="d-flex align-items-center justify-content-between mb-3">
     <h5 class="mb-0">Foods</h5>
-    <a href="/foods/new" class="btn btn-success btn-sm">+ Add Food</a>
+    <a href="/foods/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
 </div>
 
 {{if .Foods}}
-<ul class="list-unstyled">
-    {{range .Foods}}
-    <li class="card mb-2">
-        <div class="card-body py-2 d-flex align-items-center gap-2">
-            <div class="flex-grow-1">
-                <span class="fw-medium">{{.Name}}</span>
-                <small class="d-block text-secondary">{{.ServingSize}} &bull; {{.Calories}} cal</small>
+<div class="card">
+    <ul class="list-unstyled mb-0">
+        {{range .Foods}}
+        <li class="d-flex align-items-center p-3 border-bottom gap-3">
+            <div class="food-icon rounded-circle bg-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+                <span>🍽</span>
             </div>
-            <small class="text-secondary d-none d-sm-flex gap-2">
-                <span>P: {{printf "%.1f" .Protein}}g</span>
-                <span>C: {{printf "%.1f" .Carbs}}g</span>
-                <span>F: {{printf "%.1f" .Fat}}g</span>
-            </small>
-            <div class="d-flex gap-1">
-                <a href="/foods/{{.ID}}/edit" class="btn btn-outline-secondary btn-sm">Edit</a>
-                <form action="/foods/{{.ID}}/delete" method="POST" class="d-inline">
-                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this food?')">X</button>
-                </form>
+            <div class="flex-grow-1 min-width-0">
+                <div class="fw-medium text-truncate">{{.Name}}</div>
+                <small class="text-accent">{{.Calories}} kcal</small>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <span class="badge border rounded-pill px-3 py-2">1</span>
+                <small class="text-secondary">{{.ServingSize}}</small>
+            </div>
+            <div class="dropdown flex-shrink-0">
+                <button class="btn btn-link text-secondary p-0" type="button" data-bs-toggle="dropdown">
+                    <span>⋮</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><a class="dropdown-item" href="/foods/{{.ID}}/edit">Edit</a></li>
+                    <li>
+                        <form action="/foods/{{.ID}}/delete" method="POST">
+                            <button type="submit" class="dropdown-item text-danger" onclick="return confirm('Delete this food?')">Delete</button>
+                        </form>
+                    </li>
+                </ul>
+            </div>
+        </li>
+        {{end}}
+    </ul>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body py-3">
+        <div class="row text-center">
+            <div class="col-3">
+                <div class="text-accent fw-bold">0</div>
+                <small class="text-secondary">kcal</small>
+            </div>
+            <div class="col-3">
+                <div class="fw-bold">0%</div>
+                <div class="text-accent small">0g</div>
+                <small class="text-secondary">Carbs</small>
+            </div>
+            <div class="col-3">
+                <div class="fw-bold">0%</div>
+                <div class="text-accent small">0g</div>
+                <small class="text-secondary">Protein</small>
+            </div>
+            <div class="col-3">
+                <div class="fw-bold">0%</div>
+                <div class="text-accent small">0g</div>
+                <small class="text-secondary">Fat</small>
             </div>
         </div>
-    </li>
-    {{end}}
-</ul>
+    </div>
+</div>
 {{else}}
 <div class="text-center py-5 text-secondary">
     <p>No foods yet. Add your first food to start tracking!</p>
-    <a href="/foods/new" class="btn btn-success">Add Food</a>
+    <a href="/foods/new" class="btn btn-accent">Add Food</a>
 </div>
 {{end}}
 {{end}}

@@ -1,31 +1,67 @@
 {{template "base" .}}
 
 {{define "content"}}
-<div class="d-flex align-items-center justify-content-center gap-2 mb-3">
-    <a href="/?date={{.Summary.Date | prevDay}}" class="btn btn-outline-secondary btn-sm">&larr;</a>
-    <input type="date" id="datePicker" value="{{.Date}}" onchange="location.href='/?date='+this.value" class="form-control form-control-sm w-auto">
-    <a href="/?date={{.Summary.Date | nextDay}}" class="btn btn-outline-secondary btn-sm">&rarr;</a>
-</div>
+<div class="summary-header text-center text-white py-4 rounded-3 mb-3">
+    <div class="d-flex align-items-center justify-content-center gap-3 mb-4">
+        <a href="/?date={{.Summary.Date | prevDay}}" class="btn btn-outline-light btn-sm rounded-circle">&larr;</a>
+        <div class="d-flex align-items-center gap-2">
+            <span class="fs-6">{{.Date}}</span>
+        </div>
+        <a href="/?date={{.Summary.Date | nextDay}}" class="btn btn-outline-light btn-sm rounded-circle">&rarr;</a>
+    </div>
 
-<div class="card bg-success text-white mb-3">
-    <div class="card-body text-center">
-        <h6 class="card-subtitle mb-2 opacity-75">Daily Total</h6>
-        <div class="row g-2">
-            <div class="col-3">
-                <div class="fs-5 fw-bold">{{.Summary.Calories}}</div>
-                <small class="text-uppercase opacity-75">Calories</small>
+    <div class="d-flex align-items-center justify-content-center gap-4 mb-4">
+        <div class="text-center">
+            <div class="fs-4 fw-bold">{{.Summary.Calories}}</div>
+            <small class="opacity-75">eaten</small>
+        </div>
+        <div class="calorie-ring">
+            <div class="calorie-ring-inner">
+                <div class="fs-4 fw-bold">{{.Summary.Calories}}</div>
+                <small class="opacity-75">kcal</small>
             </div>
-            <div class="col-3">
-                <div class="fs-5 fw-bold">{{printf "%.1f" .Summary.Protein}}g</div>
-                <small class="text-uppercase opacity-75">Protein</small>
+        </div>
+        <div class="text-center">
+            <div class="fs-4 fw-bold">2000</div>
+            <small class="opacity-75">goal</small>
+        </div>
+    </div>
+
+    <div class="row g-3 px-3">
+        <div class="col-4">
+            <div class="macro-progress">
+                <div class="d-flex justify-content-center gap-1 mb-1">
+                    <span class="fw-bold">{{printf "%.0f" .Summary.Carbs}}</span>
+                    <span class="opacity-75">/ 250g</span>
+                </div>
+                <div class="progress" style="height: 4px;">
+                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Carbs}}%;"></div>
+                </div>
+                <small class="opacity-75">Carbs</small>
             </div>
-            <div class="col-3">
-                <div class="fs-5 fw-bold">{{printf "%.1f" .Summary.Carbs}}g</div>
-                <small class="text-uppercase opacity-75">Carbs</small>
+        </div>
+        <div class="col-4">
+            <div class="macro-progress">
+                <div class="d-flex justify-content-center gap-1 mb-1">
+                    <span class="fw-bold">{{printf "%.0f" .Summary.Protein}}</span>
+                    <span class="opacity-75">/ 150g</span>
+                </div>
+                <div class="progress" style="height: 4px;">
+                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Protein}}%;"></div>
+                </div>
+                <small class="opacity-75">Protein</small>
             </div>
-            <div class="col-3">
-                <div class="fs-5 fw-bold">{{printf "%.1f" .Summary.Fat}}g</div>
-                <small class="text-uppercase opacity-75">Fat</small>
+        </div>
+        <div class="col-4">
+            <div class="macro-progress">
+                <div class="d-flex justify-content-center gap-1 mb-1">
+                    <span class="fw-bold">{{printf "%.0f" .Summary.Fat}}</span>
+                    <span class="opacity-75">/ 65g</span>
+                </div>
+                <div class="progress" style="height: 4px;">
+                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Fat}}%;"></div>
+                </div>
+                <small class="opacity-75">Fat</small>
             </div>
         </div>
     </div>
@@ -33,7 +69,10 @@
 
 <div class="card mb-3">
     <div class="card-body">
-        <h6 class="card-title">Add Entry</h6>
+        <h6 class="card-title d-flex justify-content-between align-items-center">
+            Add Entry
+            <input type="date" id="datePicker" value="{{.Date}}" onchange="location.href='/?date='+this.value" class="form-control form-control-sm w-auto d-none">
+        </h6>
         <form action="/entries" method="POST">
             <input type="hidden" name="date" value="{{.Date}}">
             <div class="mb-2">
@@ -56,7 +95,7 @@
                     <input type="number" name="servings" value="1" step="0.25" min="0.25" class="form-control" placeholder="Servings">
                 </div>
             </div>
-            <button type="submit" class="btn btn-success w-100">Add</button>
+            <button type="submit" class="btn btn-accent w-100">Add</button>
         </form>
         {{if not .Foods}}
         <p class="text-secondary small mt-2 mb-0">No foods yet. <a href="/foods/new">Add some foods first</a>.</p>
@@ -71,17 +110,21 @@
         <ul class="list-unstyled mb-0">
             {{range .Summary.Entries}}
             <li class="d-flex align-items-center py-2 border-bottom gap-2">
-                <div class="flex-grow-1 text-truncate">
-                    <span class="fw-medium">{{.Food.Name}}</span>
-                    <small class="d-block text-secondary">{{.Meal | title}} &bull; {{printf "%.2g" .Servings}} serving(s)</small>
+                <div class="food-icon rounded-circle bg-secondary d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                    <span class="small">🍽</span>
                 </div>
-                <div class="fw-semibold text-nowrap">
-                    {{multiply .Food.Calories .Servings}} cal
+                <div class="flex-grow-1">
+                    <span class="fw-medium">{{.Food.Name}}</span>
+                    <small class="d-block text-accent">{{multiply .Food.Calories .Servings}} kcal</small>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary rounded-pill px-3">{{printf "%.2g" .Servings}}</span>
+                    <small class="text-secondary">{{.Meal | title}}</small>
                 </div>
                 <div class="d-flex gap-1">
                     <a href="/entries/{{.ID}}/edit" class="btn btn-outline-secondary btn-sm">Edit</a>
                     <form action="/entries/{{.ID}}/delete" method="POST" class="d-inline">
-                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete?')">X</button>
+                        <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('Delete?')">×</button>
                     </form>
                 </div>
             </li>

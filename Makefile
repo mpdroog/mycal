@@ -1,7 +1,7 @@
 .PHONY: all build run clean lint lint-fix test test-cover deps check
 
 BINARY=mycal
-CGO_ENABLED=1
+CGO_ENABLED=0
 GOBIN=$(shell go env GOPATH)/bin
 
 all: lint test build
