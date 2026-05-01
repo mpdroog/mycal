@@ -1,27 +1,52 @@
-"use strict";
 // Dashboard page TypeScript
-(function () {
+
+interface SearchItem {
+    type: "food" | "ingredient";
+    id: number;
+    name: string;
+    calories: number;
+    servingSize?: string;
+}
+
+interface Goals {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+}
+
+interface PrevTotals {
+    cal: number | null;
+    pro: number | null;
+    carb: number | null;
+    fat: number | null;
+}
+
+(function(): void {
     "use strict";
+
     // Initialize progress bar widths from data attributes (CSP-safe)
-    document.querySelectorAll(".progress-bar[data-width]").forEach((bar) => {
+    document.querySelectorAll<HTMLElement>(".progress-bar[data-width]").forEach((bar) => {
         const width = bar.dataset["width"];
         if (width) {
             bar.style.width = `${width}%`;
         }
     });
+
     // Read configuration from data attributes
     const configEl = document.getElementById("dashboardConfig");
-    if (!configEl)
-        return;
-    const searchItems = JSON.parse(configEl.dataset["searchItems"] ?? "[]");
-    const goals = {
+    if (!configEl) return;
+
+    const searchItems: SearchItem[] = JSON.parse(configEl.dataset["searchItems"] ?? "[]") as SearchItem[];
+    const goals: Goals = {
         calories: parseInt(configEl.dataset["goalCalories"] ?? "2000", 10),
         protein: parseFloat(configEl.dataset["goalProtein"] ?? "150"),
         carbs: parseFloat(configEl.dataset["goalCarbs"] ?? "250"),
         fat: parseFloat(configEl.dataset["goalFat"] ?? "65")
     };
+
     // Initialize Fuse.js with fuzzy search options
-    const fuse = new Fuse(searchItems, {
+    const fuse = new Fuse<SearchItem>(searchItems, {
         keys: ["name"],
         threshold: 0.4,
         distance: 100,
@@ -29,43 +54,51 @@
         minMatchCharLength: 1,
         ignoreLocation: true
     });
-    const itemSearch = document.getElementById("itemSearch");
+
+    const itemSearch = document.getElementById("itemSearch") as HTMLInputElement | null;
     const searchResults = document.getElementById("searchResults");
-    const foodIdInput = document.getElementById("foodIdInput");
-    const ingredientIdInput = document.getElementById("ingredientIdInput");
-    function selectItem(item) {
-        if (!itemSearch || !searchResults || !foodIdInput || !ingredientIdInput)
-            return;
+    const foodIdInput = document.getElementById("foodIdInput") as HTMLInputElement | null;
+    const ingredientIdInput = document.getElementById("ingredientIdInput") as HTMLInputElement | null;
+
+    function selectItem(item: SearchItem): void {
+        if (!itemSearch || !searchResults || !foodIdInput || !ingredientIdInput) return;
+
         itemSearch.value = item.name;
         searchResults.classList.add("d-none");
+
         if (item.type === "food") {
             foodIdInput.value = String(item.id);
             ingredientIdInput.value = "";
-        }
-        else {
+        } else {
             ingredientIdInput.value = String(item.id);
             foodIdInput.value = "";
         }
     }
-    function escapeHtml(text) {
+
+    function escapeHtml(text: string): string {
         const div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
     }
+
     if (itemSearch && searchResults) {
-        itemSearch.addEventListener("input", function () {
+        itemSearch.addEventListener("input", function(this: HTMLInputElement): void {
             const query = this.value.trim();
+
             if (query.length === 0) {
                 searchResults.classList.add("d-none");
                 searchResults.innerHTML = "";
                 return;
             }
+
             const results = fuse.search(query).slice(0, 10);
+
             if (results.length === 0) {
                 searchResults.innerHTML = '<div class="p-3 text-secondary">No matches found</div>';
                 searchResults.classList.remove("d-none");
                 return;
             }
+
             searchResults.innerHTML = results.map((result, index) => {
                 const item = result.item;
                 const icon = item.type === "food" ? "\u{1F37D}\u{FE0F}" : "\u{1F957}";
@@ -79,32 +112,35 @@
                     `<small class="text-secondary">${typeLabel} \u00B7 ${String(item.calories)} kcal${servingInfo}</small>` +
                     '</div></div></div>';
             }).join("");
+
             searchResults.classList.remove("d-none");
             searchResults.dataset["results"] = JSON.stringify(results.map((r) => r.item));
         });
+
         // Handle result click
-        searchResults.addEventListener("click", function (e) {
-            const target = e.target;
-            const resultEl = target.closest(".search-result");
-            if (!resultEl)
-                return;
+        searchResults.addEventListener("click", function(this: HTMLElement, e: Event): void {
+            const target = e.target as HTMLElement;
+            const resultEl = target.closest<HTMLElement>(".search-result");
+            if (!resultEl) return;
+
             const indexStr = resultEl.dataset["index"];
-            if (!indexStr)
-                return;
+            if (!indexStr) return;
+
             const index = parseInt(indexStr, 10);
             const resultsJson = this.dataset["results"];
-            if (!resultsJson)
-                return;
-            const results = JSON.parse(resultsJson);
+            if (!resultsJson) return;
+
+            const results = JSON.parse(resultsJson) as SearchItem[];
             const item = results[index];
             if (item) {
                 selectItem(item);
             }
         });
+
         // Handle keyboard navigation
-        itemSearch.addEventListener("keydown", function (e) {
-            const items = searchResults.querySelectorAll(".search-result");
-            const activeItem = searchResults.querySelector(".search-result.active");
+        itemSearch.addEventListener("keydown", function(e: KeyboardEvent): void {
+            const items = searchResults.querySelectorAll<HTMLElement>(".search-result");
+            const activeItem = searchResults.querySelector<HTMLElement>(".search-result.active");
             let activeIndex = -1;
             if (activeItem) {
                 const idx = activeItem.dataset["index"];
@@ -112,45 +148,45 @@
                     activeIndex = parseInt(idx, 10);
                 }
             }
+
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 activeIndex = Math.min(activeIndex + 1, items.length - 1);
                 items.forEach((item, i) => {
                     item.classList.toggle("active", i === activeIndex);
                 });
-            }
-            else if (e.key === "ArrowUp") {
+            } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 activeIndex = Math.max(activeIndex - 1, 0);
                 items.forEach((item, i) => {
                     item.classList.toggle("active", i === activeIndex);
                 });
-            }
-            else if (e.key === "Enter" && activeIndex >= 0) {
+            } else if (e.key === "Enter" && activeIndex >= 0) {
                 e.preventDefault();
                 const resultsJson = searchResults.dataset["results"] ?? "[]";
-                const results = JSON.parse(resultsJson);
+                const results = JSON.parse(resultsJson) as SearchItem[];
                 const item = results[activeIndex];
                 if (item) {
                     selectItem(item);
                 }
-            }
-            else if (e.key === "Escape") {
+            } else if (e.key === "Escape") {
                 searchResults.classList.add("d-none");
             }
         });
+
         // Close results when clicking outside
-        document.addEventListener("click", function (e) {
-            const target = e.target;
+        document.addEventListener("click", function(e: Event): void {
+            const target = e.target as Node;
             if (!itemSearch.contains(target) && !searchResults.contains(target)) {
                 searchResults.classList.add("d-none");
             }
         });
     }
+
     // Validate form before submit
     const addEntryForm = document.getElementById("addEntryForm");
     if (addEntryForm && foodIdInput && ingredientIdInput && itemSearch) {
-        addEntryForm.addEventListener("submit", function (e) {
+        addEntryForm.addEventListener("submit", function(e: Event): void {
             if (!foodIdInput.value && !ingredientIdInput.value) {
                 e.preventDefault();
                 itemSearch.focus();
@@ -158,187 +194,204 @@
             }
         });
     }
+
     // Show/hide floating summary based on scroll position
     const floatingSummary = document.getElementById("floatingSummary");
     const summaryHeader = document.querySelector(".summary-header");
+
     if (floatingSummary && summaryHeader) {
-        function checkScroll() {
-            const rect = summaryHeader.getBoundingClientRect();
+        function checkScroll(): void {
+            const rect = summaryHeader!.getBoundingClientRect();
             if (rect.top < 0) {
-                floatingSummary.classList.remove("d-none");
-            }
-            else {
-                floatingSummary.classList.add("d-none");
+                floatingSummary!.classList.remove("d-none");
+            } else {
+                floatingSummary!.classList.add("d-none");
             }
         }
+
         window.addEventListener("scroll", checkScroll, { passive: true });
         checkScroll();
     }
+
     // Toggle and servings functionality (requires entries)
     const entriesList = document.getElementById("entriesList");
-    if (!entriesList)
-        return;
+    if (!entriesList) return;
+
     // Store previous values for animation
-    let prevTotals = { cal: null, pro: null, carb: null, fat: null };
-    function animatePop(element) {
+    let prevTotals: PrevTotals = { cal: null, pro: null, carb: null, fat: null };
+
+    function animatePop(element: Element): void {
         element.classList.remove("value-pop");
-        void element.offsetWidth; // Trigger reflow
+        void (element as HTMLElement).offsetWidth; // Trigger reflow
         element.classList.add("value-pop");
     }
-    function updateTotals() {
+
+    function updateTotals(): void {
         let totalCal = 0, totalPro = 0, totalCarb = 0, totalFat = 0;
-        document.querySelectorAll(".entry-row").forEach((row) => {
-            const checkbox = row.querySelector(".entry-toggle");
-            const servingsInput = row.querySelector(".servings-input");
+
+        document.querySelectorAll<HTMLElement>(".entry-row").forEach((row) => {
+            const checkbox = row.querySelector<HTMLInputElement>(".entry-toggle");
+            const servingsInput = row.querySelector<HTMLInputElement>(".servings-input");
             const caloriesEl = row.querySelector(".entry-calories");
             const saveBtn = row.querySelector(".save-btn");
-            if (!checkbox || !servingsInput || !caloriesEl || !saveBtn)
-                return;
+
+            if (!checkbox || !servingsInput || !caloriesEl || !saveBtn) return;
+
             const servings = parseFloat(servingsInput.value) || 0;
+
             // Calculate this row's nutrition
             const baseCal = parseInt(row.dataset["baseCalories"] ?? "0", 10);
             const basePro = parseFloat(row.dataset["baseProtein"] ?? "0");
             const baseCarb = parseFloat(row.dataset["baseCarbs"] ?? "0");
             const baseFat = parseFloat(row.dataset["baseFat"] ?? "0");
+
             const rowCal = Math.round(baseCal * servings);
             const rowPro = basePro * servings;
             const rowCarb = baseCarb * servings;
             const rowFat = baseFat * servings;
+
             // Update row's calorie display
             caloriesEl.textContent = `${String(rowCal)} kcal`;
+
             if (checkbox.checked) {
                 totalCal += rowCal;
                 totalPro += rowPro;
                 totalCarb += rowCarb;
                 totalFat += rowFat;
             }
+
             // Visual feedback for disabled items
             row.classList.toggle("disabled", !checkbox.checked);
+
             // Show/hide save button if servings changed
             const original = parseFloat(row.dataset["originalServings"] ?? "0");
             if (Math.abs(servings - original) > 0.001) {
                 saveBtn.classList.remove("d-none");
-            }
-            else {
+            } else {
                 saveBtn.classList.add("d-none");
             }
         });
+
         // Check if values changed for animations
         const calChanged = prevTotals.cal !== null && prevTotals.cal !== totalCal;
         const proChanged = prevTotals.pro !== null && Math.round(prevTotals.pro) !== Math.round(totalPro);
         const carbChanged = prevTotals.carb !== null && Math.round(prevTotals.carb) !== Math.round(totalCarb);
         const fatChanged = prevTotals.fat !== null && Math.round(prevTotals.fat) !== Math.round(totalFat);
+
         // Update header displays
         const headerValues = document.querySelectorAll(".summary-header .fs-4.fw-bold");
         headerValues.forEach((el, i) => {
             if (i === 0 || i === 1) {
                 el.textContent = String(totalCal);
-                if (calChanged)
-                    animatePop(el);
+                if (calChanged) animatePop(el);
             }
         });
+
         // Update macro displays with animations
         const macroValues = document.querySelectorAll(".macro-progress .fw-bold");
         if (macroValues.length >= 3) {
             const carbEl = macroValues[0];
             const proEl = macroValues[1];
             const fatEl = macroValues[2];
+
             if (carbEl) {
                 carbEl.textContent = String(Math.round(totalCarb));
-                if (carbChanged)
-                    animatePop(carbEl);
+                if (carbChanged) animatePop(carbEl);
             }
             if (proEl) {
                 proEl.textContent = String(Math.round(totalPro));
-                if (proChanged)
-                    animatePop(proEl);
+                if (proChanged) animatePop(proEl);
             }
             if (fatEl) {
                 fatEl.textContent = String(Math.round(totalFat));
-                if (fatChanged)
-                    animatePop(fatEl);
+                if (fatChanged) animatePop(fatEl);
             }
         }
+
         // Update progress bars (CSS transition handles animation)
-        const progressBars = document.querySelectorAll(".macro-progress .progress-bar");
+        const progressBars = document.querySelectorAll<HTMLElement>(".macro-progress .progress-bar");
         if (progressBars.length >= 3) {
             const carbBar = progressBars[0];
             const proBar = progressBars[1];
             const fatBar = progressBars[2];
-            if (carbBar)
-                carbBar.style.width = `${String(Math.min(100, (totalCarb / goals.carbs) * 100))}%`;
-            if (proBar)
-                proBar.style.width = `${String(Math.min(100, (totalPro / goals.protein) * 100))}%`;
-            if (fatBar)
-                fatBar.style.width = `${String(Math.min(100, (totalFat / goals.fat) * 100))}%`;
+
+            if (carbBar) carbBar.style.width = `${String(Math.min(100, (totalCarb / goals.carbs) * 100))}%`;
+            if (proBar) proBar.style.width = `${String(Math.min(100, (totalPro / goals.protein) * 100))}%`;
+            if (fatBar) fatBar.style.width = `${String(Math.min(100, (totalFat / goals.fat) * 100))}%`;
         }
+
         // Update calorie ring with animation
         const ringProgress = document.querySelector(".calorie-ring-progress");
         const ringSvg = document.querySelector(".calorie-ring-svg");
         if (ringProgress) {
             const pct = Math.min(100, (totalCal / goals.calories) * 100);
             ringProgress.setAttribute("stroke-dasharray", `${String(pct)}, 100`);
+
             if (calChanged && ringSvg) {
                 ringSvg.classList.remove("ring-pulse");
-                void ringSvg.offsetWidth;
+                void (ringSvg as HTMLElement).offsetWidth;
                 ringSvg.classList.add("ring-pulse");
             }
         }
+
         // Update floating summary with animations
         const floatCal = document.getElementById("floatCal");
         const floatPro = document.getElementById("floatPro");
         const floatCarb = document.getElementById("floatCarb");
         const floatFat = document.getElementById("floatFat");
+
         if (floatCal) {
             floatCal.textContent = String(totalCal);
-            if (calChanged)
-                animatePop(floatCal);
+            if (calChanged) animatePop(floatCal);
         }
         if (floatPro) {
             floatPro.textContent = String(Math.round(totalPro));
-            if (proChanged)
-                animatePop(floatPro);
+            if (proChanged) animatePop(floatPro);
         }
         if (floatCarb) {
             floatCarb.textContent = String(Math.round(totalCarb));
-            if (carbChanged)
-                animatePop(floatCarb);
+            if (carbChanged) animatePop(floatCarb);
         }
         if (floatFat) {
             floatFat.textContent = String(Math.round(totalFat));
-            if (fatChanged)
-                animatePop(floatFat);
+            if (fatChanged) animatePop(floatFat);
         }
+
         // Store current values for next comparison
         prevTotals = { cal: totalCal, pro: totalPro, carb: totalCarb, fat: totalFat };
     }
-    entriesList.addEventListener("change", function (e) {
-        const target = e.target;
+
+    entriesList.addEventListener("change", function(e: Event): void {
+        const target = e.target as HTMLElement;
         if (target.classList.contains("entry-toggle")) {
             updateTotals();
         }
     });
-    entriesList.addEventListener("input", function (e) {
-        const target = e.target;
+
+    entriesList.addEventListener("input", function(e: Event): void {
+        const target = e.target as HTMLElement;
         if (target.classList.contains("servings-input")) {
             updateTotals();
         }
     });
+
     // Save button click - update entry servings
-    entriesList.addEventListener("click", function (e) {
-        const target = e.target;
+    entriesList.addEventListener("click", function(e: Event): void {
+        const target = e.target as HTMLElement;
         if (target.classList.contains("save-btn")) {
-            const row = target.closest(".entry-row");
-            if (!row)
-                return;
+            const row = target.closest<HTMLElement>(".entry-row");
+            if (!row) return;
+
             const entryId = row.dataset["id"];
-            const servingsInput = row.querySelector(".servings-input");
-            if (!entryId || !servingsInput)
-                return;
+            const servingsInput = row.querySelector<HTMLInputElement>(".servings-input");
+            if (!entryId || !servingsInput) return;
+
             const servings = servingsInput.value;
+
             // Send update request
             const formData = new FormData();
             formData.append("servings", servings);
+
             fetch(`/entries/${entryId}/servings`, {
                 method: "POST",
                 body: formData

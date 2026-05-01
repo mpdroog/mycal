@@ -1,56 +1,39 @@
 import js from "@eslint/js";
+import tseslint from "typescript-eslint";
 import globals from "globals";
 
-export default [
+export default tseslint.config(
     {
-        ignores: ["static/js/**/*.min.js"]
+        ignores: ["static/js/**/*.min.js", "static/js/*.js", "node_modules/**"]
     },
     js.configs.recommended,
+    ...tseslint.configs.strictTypeChecked,
     {
-        files: ["static/js/**/*.js"],
+        files: ["static/js/src/**/*.ts"],
         languageOptions: {
             ecmaVersion: 2022,
-            sourceType: "script",
+            sourceType: "module",
             globals: {
-                ...globals.browser,
-                // Bootstrap
-                bootstrap: "readonly",
-                // Fuse.js
-                Fuse: "readonly",
-                // App globals defined in base.html
-                showError: "readonly"
+                ...globals.browser
+            },
+            parserOptions: {
+                project: "./tsconfig.json"
             }
         },
         rules: {
-            // Catch common errors
-            "no-undef": "error",
-            "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-            "no-redeclare": "error",
-            "no-dupe-keys": "error",
-            "no-duplicate-case": "error",
-            "no-empty": "warn",
-            "no-unreachable": "error",
-            "no-constant-condition": "warn",
-            "use-isnan": "error",
-            "valid-typeof": "error",
+            // TypeScript strict rules are already enabled via strictTypeChecked
+            // Additional rules
+            "@typescript-eslint/explicit-function-return-type": "error",
+            "@typescript-eslint/no-explicit-any": "error",
+            "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+            "@typescript-eslint/strict-boolean-expressions": "off", // Too noisy
+            "@typescript-eslint/no-non-null-assertion": "off", // We use these intentionally after null checks
 
             // Best practices
             "eqeqeq": ["error", "always", { null: "ignore" }],
             "no-eval": "error",
             "no-implied-eval": "error",
-            "no-new-func": "error",
-            "no-return-assign": "error",
-            "no-self-assign": "error",
-            "no-self-compare": "error",
-            "no-sequences": "error",
-            "no-throw-literal": "error",
-            "no-unmodified-loop-condition": "error",
-            "no-useless-concat": "warn",
-            "no-useless-return": "warn",
-            "radix": "error",
-
-            // Style (minimal, just catching likely bugs)
-            "no-mixed-spaces-and-tabs": "error"
+            "radix": "error"
         }
     }
-];
+);
