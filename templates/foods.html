@@ -1,0 +1,37 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="page-header">
+    <h2>Foods</h2>
+    <a href="/foods/new" class="btn btn-primary">+ Add Food</a>
+</div>
+
+{{if .Foods}}
+<ul class="food-list">
+    {{range .Foods}}
+    <li class="food-item">
+        <div class="food-info">
+            <span class="food-name">{{.Name}}</span>
+            <span class="food-meta">{{.ServingSize}} &bull; {{.Calories}} cal</span>
+        </div>
+        <div class="food-macros">
+            <span>P: {{printf "%.1f" .Protein}}g</span>
+            <span>C: {{printf "%.1f" .Carbs}}g</span>
+            <span>F: {{printf "%.1f" .Fat}}g</span>
+        </div>
+        <div class="food-actions">
+            <a href="/foods/{{.ID}}/edit" class="btn btn-sm">Edit</a>
+            <form action="/foods/{{.ID}}/delete" method="POST" style="display:inline">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this food?')">X</button>
+            </form>
+        </div>
+    </li>
+    {{end}}
+</ul>
+{{else}}
+<div class="empty-state">
+    <p>No foods yet. Add your first food to start tracking!</p>
+    <a href="/foods/new" class="btn btn-primary">Add Food</a>
+</div>
+{{end}}
+{{end}}

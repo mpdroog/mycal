@@ -1,0 +1,87 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="date-nav">
+    <a href="/?date={{.Summary.Date | prevDay}}" class="btn btn-sm">&larr;</a>
+    <input type="date" id="datePicker" value="{{.Date}}" onchange="location.href='/?date='+this.value">
+    <a href="/?date={{.Summary.Date | nextDay}}" class="btn btn-sm">&rarr;</a>
+</div>
+
+<div class="summary-card">
+    <h2>Daily Total</h2>
+    <div class="macros">
+        <div class="macro">
+            <span class="macro-value">{{.Summary.Calories}}</span>
+            <span class="macro-label">Calories</span>
+        </div>
+        <div class="macro">
+            <span class="macro-value">{{printf "%.1f" .Summary.Protein}}g</span>
+            <span class="macro-label">Protein</span>
+        </div>
+        <div class="macro">
+            <span class="macro-value">{{printf "%.1f" .Summary.Carbs}}g</span>
+            <span class="macro-label">Carbs</span>
+        </div>
+        <div class="macro">
+            <span class="macro-value">{{printf "%.1f" .Summary.Fat}}g</span>
+            <span class="macro-label">Fat</span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Add Entry</h3>
+    <form action="/entries" method="POST" class="entry-form">
+        <input type="hidden" name="date" value="{{.Date}}">
+        <div class="form-group">
+            <select name="food_id" required class="form-control">
+                <option value="">Select food...</option>
+                {{range .Foods}}
+                <option value="{{.ID}}">{{.Name}} ({{.Calories}} cal)</option>
+                {{end}}
+            </select>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <select name="meal" class="form-control">
+                    {{range .Meals}}
+                    <option value="{{.}}">{{. | title}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div class="form-group">
+                <input type="number" name="servings" value="1" step="0.25" min="0.25" class="form-control" placeholder="Servings">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Add</button>
+    </form>
+    {{if not .Foods}}
+    <p class="text-muted">No foods yet. <a href="/foods/new">Add some foods first</a>.</p>
+    {{end}}
+</div>
+
+{{if .Summary.Entries}}
+<div class="card">
+    <h3>Today's Entries</h3>
+    <ul class="entry-list">
+        {{range .Summary.Entries}}
+        <li class="entry-item">
+            <div class="entry-info">
+                <span class="entry-name">{{.Food.Name}}</span>
+                <span class="entry-meta">{{.Meal | title}} &bull; {{printf "%.2g" .Servings}} serving(s)</span>
+            </div>
+            <div class="entry-calories">
+                {{multiply .Food.Calories .Servings}} cal
+            </div>
+            <div class="entry-actions">
+                <a href="/entries/{{.ID}}/edit" class="btn btn-sm">Edit</a>
+                <form action="/entries/{{.ID}}/delete" method="POST" style="display:inline">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete?')">X</button>
+                </form>
+            </div>
+        </li>
+        {{end}}
+    </ul>
+</div>
+{{end}}
+{{end}}

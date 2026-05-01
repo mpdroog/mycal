@@ -1,0 +1,25 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#4a7c59">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>{{.Title}} - MyCal</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <a href="/" class="nav-brand">MyCal</a>
+        <div class="nav-links">
+            <a href="/" class="{{if eq .Title "Today"}}active{{end}}">Today</a>
+            <a href="/foods" class="{{if eq .Title "Foods"}}active{{end}}">Foods</a>
+        </div>
+    </nav>
+    <main class="container">
+        {{block "content" .}}{{end}}
+    </main>
+</body>
+</html>
+{{end}}

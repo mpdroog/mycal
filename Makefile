@@ -1,0 +1,40 @@
+.PHONY: all build run clean lint lint-fix test test-cover deps check
+
+BINARY=mycal
+CGO_ENABLED=1
+GOBIN=$(shell go env GOPATH)/bin
+
+all: lint test build
+
+build:
+	CGO_ENABLED=$(CGO_ENABLED) go build -o $(BINARY) .
+
+run: build
+	./$(BINARY)
+
+clean:
+	rm -f $(BINARY)
+	rm -rf data/
+
+lint:
+	$(GOBIN)/golangci-lint run --config .golangci.yml
+
+lint-fix:
+	$(GOBIN)/golangci-lint run --config .golangci.yml --fix
+
+test:
+	go test -v ./...
+
+test-cover:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+
+deps:
+	go mod download
+	go mod tidy
+
+check: lint test
+	@echo "All checks passed!"
+
+install-tools:
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest

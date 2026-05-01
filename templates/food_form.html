@@ -1,0 +1,46 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="page-header">
+    <h2>{{.Title}}</h2>
+</div>
+
+<div class="card">
+    <form method="POST" class="food-form">
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" value="{{.Food.Name}}" required class="form-control" placeholder="e.g., Chicken Breast">
+        </div>
+
+        <div class="form-group">
+            <label for="serving_size">Serving Size</label>
+            <input type="text" id="serving_size" name="serving_size" value="{{.Food.ServingSize}}" class="form-control" placeholder="e.g., 100g, 1 cup">
+        </div>
+
+        <div class="form-group">
+            <label for="calories">Calories</label>
+            <input type="number" id="calories" name="calories" value="{{.Food.Calories}}" class="form-control" placeholder="0">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="protein">Protein (g)</label>
+                <input type="number" id="protein" name="protein" value="{{printf "%.1f" .Food.Protein}}" step="0.1" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="carbs">Carbs (g)</label>
+                <input type="number" id="carbs" name="carbs" value="{{printf "%.1f" .Food.Carbs}}" step="0.1" class="form-control">
+            </div>
+            <div class="form-group">
+                <label for="fat">Fat (g)</label>
+                <input type="number" id="fat" name="fat" value="{{printf "%.1f" .Food.Fat}}" step="0.1" class="form-control">
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="/foods" class="btn">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+    </form>
+</div>
+{{end}}
