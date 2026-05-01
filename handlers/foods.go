@@ -1,8 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -14,79 +14,89 @@ import (
 	"github.com/mpdroog/mycal/models"
 )
 
-type foodFormData struct {
-	Name        string
-	Calories    int
-	Protein     float64
-	Carbs       float64
-	Fat         float64
-	ServingSize string
+// getFoodWithNutrition loads a food and calculates its nutritional values from ingredients.
+func getFoodWithNutrition(foodID int64) (*models.Food, error) {
+	var f models.Food
+
+	err := db.DB.QueryRow(`SELECT id, name, created_at FROM foods WHERE id = ?`, foodID).
+		Scan(&f.ID, &f.Name, &f.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get ingredients with their amounts
+	rows, err := db.DB.Query(`
+		SELECT fi.id, fi.food_id, fi.ingredient_id, fi.amount_grams,
+		       i.id, i.name, i.calories, i.protein, i.carbs, i.fat, i.serving_size
+		FROM food_ingredients fi
+		JOIN ingredients i ON fi.ingredient_id = i.id
+		WHERE fi.food_id = ?
+	`, foodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var fi models.FoodIngredient
+		var ing models.Ingredient
+
+		err := rows.Scan(&fi.ID, &fi.FoodID, &fi.IngredientID, &fi.AmountGrams,
+			&ing.ID, &ing.Name, &ing.Calories, &ing.Protein, &ing.Carbs, &ing.Fat, &ing.ServingSize)
+		if err != nil {
+			return nil, err
+		}
+
+		fi.Ingredient = &ing
+		f.Ingredients = append(f.Ingredients, fi)
+
+		// Calculate nutrition based on amount (assuming ingredient values are per 100g)
+		ratio := fi.AmountGrams / 100.0
+		f.Calories += int(float64(ing.Calories) * ratio)
+		f.Protein += ing.Protein * ratio
+		f.Carbs += ing.Carbs * ratio
+		f.Fat += ing.Fat * ratio
+	}
+
+	return &f, rows.Err()
 }
 
-func parseFoodForm(r *http.Request) (foodFormData, error) {
-	if err := r.ParseForm(); err != nil {
-		return foodFormData{}, err
-	}
-
-	calories, err := strconv.Atoi(r.FormValue("calories"))
+// getAllFoods returns all foods with their calculated nutritional values.
+func getAllFoods() ([]models.Food, error) {
+	rows, err := db.DB.Query(`SELECT id, name FROM foods ORDER BY name`)
 	if err != nil {
-		return foodFormData{}, fmt.Errorf("invalid calories: %w", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var foods []models.Food
+
+	for rows.Next() {
+		var f models.Food
+
+		if err := rows.Scan(&f.ID, &f.Name); err != nil {
+			return nil, err
+		}
+
+		// Get nutrition for this food
+		foodWithNutrition, err := getFoodWithNutrition(f.ID)
+		if err != nil {
+			log.Printf("getAllFoods: failed to get nutrition for food %d: %v", f.ID, err)
+			foods = append(foods, f)
+
+			continue
+		}
+
+		foods = append(foods, *foodWithNutrition)
 	}
 
-	protein, err := strconv.ParseFloat(r.FormValue("protein"), 64)
-	if err != nil {
-		return foodFormData{}, fmt.Errorf("invalid protein: %w", err)
-	}
-
-	carbs, err := strconv.ParseFloat(r.FormValue("carbs"), 64)
-	if err != nil {
-		return foodFormData{}, fmt.Errorf("invalid carbs: %w", err)
-	}
-
-	fat, err := strconv.ParseFloat(r.FormValue("fat"), 64)
-	if err != nil {
-		return foodFormData{}, fmt.Errorf("invalid fat: %w", err)
-	}
-
-	return foodFormData{
-		Name:        r.FormValue("name"),
-		Calories:    calories,
-		Protein:     protein,
-		Carbs:       carbs,
-		Fat:         fat,
-		ServingSize: r.FormValue("serving_size"),
-	}, nil
+	return foods, rows.Err()
 }
 
 func ListFoods(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.DB.Query(`
-			SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
-			FROM foods ORDER BY name ASC
-		`)
+		foods, err := getAllFoods()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-
-			return
-		}
-		defer rows.Close()
-
-		var foods []models.Food
-
-		for rows.Next() {
-			var f models.Food
-
-			err := rows.Scan(&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.ServingSize, &f.CreatedAt)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-
-				return
-			}
-
-			foods = append(foods, f)
-		}
-
-		if err := rows.Err(); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
 			return
@@ -105,10 +115,18 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 
 func CreateFood(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ingredients, err := GetAllIngredients()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
 		if r.Method == http.MethodGet {
 			data := map[string]interface{}{
-				"Title": "Add Food",
-				"Food":  models.Food{ServingSize: "1 serving"},
+				"Title":       "Add Food",
+				"Food":        models.Food{},
+				"Ingredients": ingredients,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -118,53 +136,64 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		form, err := parseFoodForm(r)
-		if err != nil {
+		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 
 			return
 		}
 
-		_, err = db.DB.Exec(`
-			INSERT INTO foods (name, calories, protein, carbs, fat, serving_size)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize)
+		name := r.FormValue("name")
+		if name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+
+			return
+		}
+
+		// Parse ingredients JSON
+		ingredientsJSON := r.FormValue("ingredients")
+
+		var foodIngredients []struct {
+			IngredientID int64   `json:"ingredient_id"`
+			AmountGrams  float64 `json:"amount_grams"`
+		}
+
+		if ingredientsJSON != "" {
+			if err := json.Unmarshal([]byte(ingredientsJSON), &foodIngredients); err != nil {
+				http.Error(w, "invalid ingredients format", http.StatusBadRequest)
+
+				return
+			}
+		}
+
+		// Insert food
+		result, err := db.DB.Exec(`INSERT INTO foods (name) VALUES (?)`, name)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
 			return
 		}
 
+		foodID, err := result.LastInsertId()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
+		// Insert food ingredients
+		for _, fi := range foodIngredients {
+			_, err := db.DB.Exec(`
+				INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams)
+				VALUES (?, ?, ?)
+			`, foodID, fi.IngredientID, fi.AmountGrams)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+		}
+
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
-	}
-}
-
-func showEditFoodForm(tmpl *template.Template, w http.ResponseWriter, r *http.Request, id int64) {
-	var f models.Food
-
-	queryErr := db.DB.QueryRow(`
-		SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
-		FROM foods WHERE id = ?
-	`, id).Scan(&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.ServingSize, &f.CreatedAt)
-	if errors.Is(queryErr, models.ErrNotFound) {
-		http.NotFound(w, r)
-
-		return
-	}
-
-	if queryErr != nil {
-		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
-
-		return
-	}
-
-	data := map[string]interface{}{
-		"Title": "Edit Food",
-		"Food":  f,
-	}
-
-	if tmplErr := tmpl.ExecuteTemplate(w, "base", data); tmplErr != nil {
-		http.Error(w, tmplErr.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -177,27 +206,95 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		if r.Method == http.MethodGet {
-			showEditFoodForm(tmpl, w, r, id)
+		ingredients, err := GetAllIngredients()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 
 			return
 		}
 
-		form, err := parseFoodForm(r)
-		if err != nil {
+		if r.Method == http.MethodGet {
+			food, err := getFoodWithNutrition(id)
+			if errors.Is(err, models.ErrNotFound) {
+				http.NotFound(w, r)
+
+				return
+			}
+
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+
+			data := map[string]interface{}{
+				"Title":       "Edit Food",
+				"Food":        food,
+				"Ingredients": ingredients,
+			}
+
+			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 
 			return
 		}
 
-		_, err = db.DB.Exec(`
-			UPDATE foods SET name = ?, calories = ?, protein = ?, carbs = ?, fat = ?, serving_size = ?
-			WHERE id = ?
-		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, id)
+		name := r.FormValue("name")
+		if name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
+
+			return
+		}
+
+		// Parse ingredients JSON
+		ingredientsJSON := r.FormValue("ingredients")
+
+		var foodIngredients []struct {
+			IngredientID int64   `json:"ingredient_id"`
+			AmountGrams  float64 `json:"amount_grams"`
+		}
+
+		if ingredientsJSON != "" {
+			if err := json.Unmarshal([]byte(ingredientsJSON), &foodIngredients); err != nil {
+				http.Error(w, "invalid ingredients format", http.StatusBadRequest)
+
+				return
+			}
+		}
+
+		// Update food name
+		_, err = db.DB.Exec(`UPDATE foods SET name = ? WHERE id = ?`, name, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
 			return
+		}
+
+		// Delete old ingredients and insert new ones
+		_, err = db.DB.Exec(`DELETE FROM food_ingredients WHERE food_id = ?`, id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
+		for _, fi := range foodIngredients {
+			_, err := db.DB.Exec(`
+				INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams)
+				VALUES (?, ?, ?)
+			`, id, fi.IngredientID, fi.AmountGrams)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+
+				return
+			}
 		}
 
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
@@ -225,10 +322,7 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 func SearchFoods(w http.ResponseWriter, r *http.Request) {
 	q := "%" + r.URL.Query().Get("q") + "%"
 
-	rows, err := db.DB.Query(`
-		SELECT id, name, calories, protein, carbs, fat, serving_size
-		FROM foods WHERE name LIKE ? ORDER BY name LIMIT 10
-	`, q)
+	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE name LIKE ? ORDER BY name LIMIT 10`, q)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -236,31 +330,31 @@ func SearchFoods(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "application/json")
+
+	var foods []models.Food
 
 	for rows.Next() {
 		var f models.Food
 
-		if err := rows.Scan(&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.ServingSize); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name); err != nil {
 			log.Printf("SearchFoods scan error: %v", err)
 
 			continue
 		}
 
-		// Return as HTMX-friendly options
-		option := fmt.Sprintf(
-			`<option value="%d" data-calories="%d">%s (%d cal)</option>`,
-			f.ID, f.Calories, f.Name, f.Calories,
-		)
+		foodWithNutrition, err := getFoodWithNutrition(f.ID)
+		if err != nil {
+			log.Printf("SearchFoods nutrition error: %v", err)
+			foods = append(foods, f)
 
-		if _, err := w.Write([]byte(option)); err != nil {
-			log.Printf("SearchFoods write error: %v", err)
-
-			return
+			continue
 		}
+
+		foods = append(foods, *foodWithNutrition)
 	}
 
-	if err := rows.Err(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(foods); err != nil {
+		log.Printf("SearchFoods encode error: %v", err)
 	}
 }

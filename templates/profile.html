@@ -1,0 +1,38 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="mb-3">
+    <h5>{{.Title}}</h5>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="calories_goal" class="form-label">Daily Calories Goal (kcal)</label>
+                <input type="number" id="calories_goal" name="calories_goal" value="{{.Profile.CaloriesGoal}}" required class="form-control" placeholder="2000">
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col">
+                    <label for="protein_goal" class="form-label">Protein (g)</label>
+                    <input type="number" id="protein_goal" name="protein_goal" value="{{printf "%.0f" .Profile.ProteinGoal}}" step="1" class="form-control" placeholder="150">
+                </div>
+                <div class="col">
+                    <label for="carbs_goal" class="form-label">Carbs (g)</label>
+                    <input type="number" id="carbs_goal" name="carbs_goal" value="{{printf "%.0f" .Profile.CarbsGoal}}" step="1" class="form-control" placeholder="250">
+                </div>
+                <div class="col">
+                    <label for="fat_goal" class="form-label">Fat (g)</label>
+                    <input type="number" id="fat_goal" name="fat_goal" value="{{printf "%.0f" .Profile.FatGoal}}" step="1" class="form-control" placeholder="65">
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <a href="/" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-accent">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}

@@ -5,44 +5,143 @@
     <h5>{{.Title}}</h5>
 </div>
 
-<div class="card">
+<div class="card mb-3">
     <div class="card-body">
-        <form method="POST">
+        <form method="POST" id="foodForm">
             <div class="mb-3">
-                <label for="name" class="form-label">Name</label>
-                <input type="text" id="name" name="name" value="{{.Food.Name}}" required class="form-control" placeholder="e.g., Chicken Breast">
+                <label for="name" class="form-label">Food Name</label>
+                <input type="text" id="name" name="name" value="{{.Food.Name}}" required class="form-control" placeholder="e.g., Breakfast Bowl">
             </div>
 
-            <div class="mb-3">
-                <label for="serving_size" class="form-label">Serving Size</label>
-                <input type="text" id="serving_size" name="serving_size" value="{{.Food.ServingSize}}" class="form-control" placeholder="e.g., 100g, 1 cup">
-            </div>
+            <input type="hidden" name="ingredients" id="ingredientsJson" value="">
 
             <div class="mb-3">
-                <label for="calories" class="form-label">Calories</label>
-                <input type="number" id="calories" name="calories" value="{{.Food.Calories}}" class="form-control" placeholder="0">
-            </div>
-
-            <div class="row g-2 mb-3">
-                <div class="col">
-                    <label for="protein" class="form-label">Protein (g)</label>
-                    <input type="number" id="protein" name="protein" value="{{printf "%.1f" .Food.Protein}}" step="0.1" class="form-control">
+                <label class="form-label">Ingredients</label>
+                <div id="ingredientsList" class="mb-2">
+                    {{range .Food.Ingredients}}
+                    <div class="d-flex align-items-center gap-2 mb-2 ingredient-row" data-id="{{.IngredientID}}">
+                        <div class="flex-grow-1">
+                            <span class="fw-medium">{{.Ingredient.Name}}</span>
+                            <small class="text-secondary">({{.Ingredient.Calories}} kcal/{{.Ingredient.ServingSize}})</small>
+                        </div>
+                        <input type="number" class="form-control form-control-sm amount-input" style="width: 80px;" value="{{printf "%.0f" .AmountGrams}}" step="1" min="1" placeholder="g">
+                        <span class="text-secondary">g</span>
+                        <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">×</button>
+                    </div>
+                    {{end}}
                 </div>
-                <div class="col">
-                    <label for="carbs" class="form-label">Carbs (g)</label>
-                    <input type="number" id="carbs" name="carbs" value="{{printf "%.1f" .Food.Carbs}}" step="0.1" class="form-control">
+                <div class="d-flex gap-2">
+                    <select id="ingredientSelect" class="form-select">
+                        <option value="">Add ingredient...</option>
+                        {{range .Ingredients}}
+                        <option value="{{.ID}}" data-name="{{.Name}}" data-calories="{{.Calories}}" data-serving="{{.ServingSize}}">{{.Name}} ({{.Calories}} kcal/{{.ServingSize}})</option>
+                        {{end}}
+                    </select>
+                    <button type="button" class="btn btn-outline-secondary" id="addIngredient">Add</button>
                 </div>
-                <div class="col">
-                    <label for="fat" class="form-label">Fat (g)</label>
-                    <input type="number" id="fat" name="fat" value="{{printf "%.1f" .Food.Fat}}" step="0.1" class="form-control">
+            </div>
+
+            <div class="card bg-body-secondary mb-3">
+                <div class="card-body py-2">
+                    <div class="row text-center">
+                        <div class="col-3">
+                            <div class="text-accent fw-bold" id="totalCalories">0</div>
+                            <small class="text-secondary">kcal</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="text-accent fw-bold" id="totalProtein">0</div>
+                            <small class="text-secondary">Protein</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="text-accent fw-bold" id="totalCarbs">0</div>
+                            <small class="text-secondary">Carbs</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="text-accent fw-bold" id="totalFat">0</div>
+                            <small class="text-secondary">Fat</small>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="d-flex gap-2 justify-content-end">
                 <a href="/foods" class="btn btn-outline-secondary">Cancel</a>
-                <button type="submit" class="btn btn-success">Save</button>
+                <button type="submit" class="btn btn-accent">Save</button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const ingredientsList = document.getElementById('ingredientsList');
+    const ingredientSelect = document.getElementById('ingredientSelect');
+    const addBtn = document.getElementById('addIngredient');
+    const form = document.getElementById('foodForm');
+    const ingredientsJson = document.getElementById('ingredientsJson');
+
+    function updateTotals() {
+        // This is a simplified version - actual calculation would need ingredient data
+        const rows = ingredientsList.querySelectorAll('.ingredient-row');
+        document.getElementById('totalCalories').textContent = rows.length > 0 ? '~' : '0';
+    }
+
+    function collectIngredients() {
+        const rows = ingredientsList.querySelectorAll('.ingredient-row');
+        const ingredients = [];
+        rows.forEach(row => {
+            const id = parseInt(row.dataset.id);
+            const amount = parseFloat(row.querySelector('.amount-input').value) || 100;
+            ingredients.push({ ingredient_id: id, amount_grams: amount });
+        });
+        ingredientsJson.value = JSON.stringify(ingredients);
+    }
+
+    addBtn.addEventListener('click', function() {
+        const select = ingredientSelect;
+        const option = select.options[select.selectedIndex];
+        if (!option.value) return;
+
+        const id = option.value;
+        const name = option.dataset.name;
+        const calories = option.dataset.calories;
+        const serving = option.dataset.serving;
+
+        // Check if already added
+        if (ingredientsList.querySelector(`[data-id="${id}"]`)) {
+            alert('Ingredient already added');
+            return;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center gap-2 mb-2 ingredient-row';
+        row.dataset.id = id;
+        row.innerHTML = `
+            <div class="flex-grow-1">
+                <span class="fw-medium">${name}</span>
+                <small class="text-secondary">(${calories} kcal/${serving})</small>
+            </div>
+            <input type="number" class="form-control form-control-sm amount-input" style="width: 80px;" value="100" step="1" min="1" placeholder="g">
+            <span class="text-secondary">g</span>
+            <button type="button" class="btn btn-outline-danger btn-sm remove-ingredient">×</button>
+        `;
+        ingredientsList.appendChild(row);
+        select.selectedIndex = 0;
+        updateTotals();
+    });
+
+    ingredientsList.addEventListener('click', function(e) {
+        if (e.target.classList.contains('remove-ingredient')) {
+            e.target.closest('.ingredient-row').remove();
+            updateTotals();
+        }
+    });
+
+    form.addEventListener('submit', function() {
+        collectIngredients();
+    });
+
+    updateTotals();
+});
+</script>
 {{end}}

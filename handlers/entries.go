@@ -31,12 +31,21 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		// Get profile for goals
+		profile, err := GetProfile()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
+
 		data := map[string]interface{}{
 			"Title":   "Today",
 			"Date":    date,
 			"Summary": summary,
 			"Foods":   foods,
 			"Meals":   []string{"breakfast", "lunch", "dinner", "snack"},
+			"Profile": profile,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -122,7 +131,7 @@ func getDaySummary(date string) models.DaySummary {
 
 	rows, err := db.DB.Query(`
 		SELECT e.id, e.food_id, e.date, e.meal, e.servings, COALESCE(e.notes, ''),
-		       f.id, f.name, f.calories, f.protein, f.carbs, f.fat, f.serving_size
+		       f.id, f.name
 		FROM entries e
 		JOIN foods f ON e.food_id = f.id
 		WHERE e.date = ?
@@ -137,23 +146,32 @@ func getDaySummary(date string) models.DaySummary {
 
 	for rows.Next() {
 		var e models.Entry
-
 		var f models.Food
 
 		if err := rows.Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
-			&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.ServingSize); err != nil {
+			&f.ID, &f.Name); err != nil {
 			log.Printf("getDaySummary: scan failed: %v", err)
 
 			continue
 		}
 
-		e.Food = &f
+		// Get nutrition for this food
+		foodWithNutrition, err := getFoodWithNutrition(f.ID)
+		if err != nil {
+			log.Printf("getDaySummary: failed to get nutrition for food %d: %v", f.ID, err)
+			e.Food = &f
+		} else {
+			e.Food = foodWithNutrition
+		}
 
 		// Calculate totals based on servings
-		summary.Calories += int(float64(f.Calories) * e.Servings)
-		summary.Protein += f.Protein * e.Servings
-		summary.Carbs += f.Carbs * e.Servings
-		summary.Fat += f.Fat * e.Servings
+		if e.Food != nil {
+			summary.Calories += int(float64(e.Food.Calories) * e.Servings)
+			summary.Protein += e.Food.Protein * e.Servings
+			summary.Carbs += e.Food.Carbs * e.Servings
+			summary.Fat += e.Food.Fat * e.Servings
+		}
+
 		summary.Entries = append(summary.Entries, e)
 	}
 
@@ -162,32 +180,6 @@ func getDaySummary(date string) models.DaySummary {
 	}
 
 	return summary
-}
-
-func getAllFoods() ([]models.Food, error) {
-	rows, err := db.DB.Query(`SELECT id, name, calories, serving_size FROM foods ORDER BY name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var foods []models.Food
-
-	for rows.Next() {
-		var f models.Food
-
-		if err := rows.Scan(&f.ID, &f.Name, &f.Calories, &f.ServingSize); err != nil {
-			return nil, err
-		}
-
-		foods = append(foods, f)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	return foods, nil
 }
 
 func GetEntry(tmpl *template.Template) http.HandlerFunc {
@@ -200,17 +192,16 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		var e models.Entry
-
 		var f models.Food
 
 		err = db.DB.QueryRow(`
 			SELECT e.id, e.food_id, e.date, e.meal, e.servings, COALESCE(e.notes, ''),
-			       f.id, f.name, f.calories, f.protein, f.carbs, f.fat, f.serving_size
+			       f.id, f.name
 			FROM entries e
 			JOIN foods f ON e.food_id = f.id
 			WHERE e.id = ?
 		`, id).Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
-			&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat, &f.ServingSize)
+			&f.ID, &f.Name)
 		if errors.Is(err, models.ErrNotFound) {
 			http.NotFound(w, r)
 

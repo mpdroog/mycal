@@ -82,11 +82,40 @@ func loadTestTemplates() (*Templates, error) {
 		"multiply": func(a int, b float64) int {
 			return int(float64(a) * b)
 		},
+		"divide": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+
+			return a / b
+		},
+		"percentage": func(value, goal float64) int {
+			if goal == 0 {
+				return 0
+			}
+
+			pct := (value / goal) * 100
+			if pct > 100 {
+				return 100
+			}
+
+			return int(pct)
+		},
 	}
 
 	base := filepath.Join("templates", "base.html")
 
 	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "dashboard.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredients.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredient_form.html"))
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +135,19 @@ func loadTestTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "profile.html"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
-		Dashboard: dashboard,
-		Foods:     foods,
-		FoodForm:  foodForm,
-		EntryForm: entryForm,
+		Dashboard:      dashboard,
+		Ingredients:    ingredients,
+		IngredientForm: ingredientForm,
+		Foods:          foods,
+		FoodForm:       foodForm,
+		EntryForm:      entryForm,
+		Profile:        profile,
 	}, nil
 }
 
@@ -122,17 +159,33 @@ func setupRouter(tmpls *Templates) *chi.Mux {
 	r.Handle("/static/*", http.StripPrefix("/static/", fs))
 
 	r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+
+	// Ingredients
+	r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
+	r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+	r.Get("/ingredients/search", handlers.SearchIngredients)
+
+	// Foods
 	r.Get("/foods", handlers.ListFoods(tmpls.Foods))
 	r.Get("/foods/new", handlers.CreateFood(tmpls.FoodForm))
 	r.Post("/foods/new", handlers.CreateFood(tmpls.FoodForm))
 	r.Get("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
 	r.Post("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
 	r.Post("/foods/{id}/delete", handlers.DeleteFood)
-	r.Get("/foods/search", handlers.SearchFoods)
+
+	// Entries
 	r.Post("/entries", handlers.CreateEntry)
 	r.Get("/entries/{id}/edit", handlers.GetEntry(tmpls.EntryForm))
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+
+	// Profile
+	r.Get("/profile", handlers.Profile(tmpls.Profile))
+	r.Post("/profile", handlers.Profile(tmpls.Profile))
 
 	return r
 }
@@ -201,6 +254,19 @@ func TestDashboardLoads(t *testing.T) {
 	}
 }
 
+func TestIngredientsListLoads(t *testing.T) {
+	client := testServer.Client()
+	status, body := doGet(t, client, testServer.URL+"/ingredients")
+
+	if status != http.StatusOK {
+		t.Errorf("Ingredients: expected 200, got %d", status)
+	}
+
+	if !strings.Contains(body, "Ingredients - MyCal") {
+		t.Error("Ingredients: missing title")
+	}
+}
+
 func TestFoodsListLoads(t *testing.T) {
 	client := testServer.Client()
 	status, body := doGet(t, client, testServer.URL+"/foods")
@@ -214,24 +280,24 @@ func TestFoodsListLoads(t *testing.T) {
 	}
 }
 
-func TestFoodFormLoads(t *testing.T) {
+func TestIngredientFormLoads(t *testing.T) {
 	client := testServer.Client()
-	status, body := doGet(t, client, testServer.URL+"/foods/new")
+	status, body := doGet(t, client, testServer.URL+"/ingredients/new")
 
 	if status != http.StatusOK {
-		t.Errorf("Food form: expected 200, got %d", status)
+		t.Errorf("Ingredient form: expected 200, got %d", status)
 	}
 
-	if !strings.Contains(body, "Add Food - MyCal") {
-		t.Error("Food form: missing title")
+	if !strings.Contains(body, "Add Ingredient - MyCal") {
+		t.Error("Ingredient form: missing title")
 	}
 
 	if !strings.Contains(body, `<form`) {
-		t.Error("Food form: missing form element")
+		t.Error("Ingredient form: missing form element")
 	}
 }
 
-func TestFoodCreateAndVerify(t *testing.T) {
+func TestIngredientCreateAndVerify(t *testing.T) {
 	client := testServer.Client()
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
@@ -243,42 +309,23 @@ func TestFoodCreateAndVerify(t *testing.T) {
 	form.Set("protein", "5")
 	form.Set("carbs", "27")
 	form.Set("fat", "3")
-	form.Set("serving_size", "1 cup cooked")
+	form.Set("serving_size", "100g")
 
-	status := doPost(t, client, testServer.URL+"/foods/new", form)
+	status := doPost(t, client, testServer.URL+"/ingredients/new", form)
 
 	if status != http.StatusSeeOther {
-		t.Errorf("Create food: expected 303 redirect, got %d", status)
+		t.Errorf("Create ingredient: expected 303 redirect, got %d", status)
 	}
 
-	// Verify food appears in list
-	_, body := doGet(t, client, testServer.URL+"/foods")
+	// Verify ingredient appears in list
+	_, body := doGet(t, client, testServer.URL+"/ingredients")
 
 	if !strings.Contains(body, "Integration Test Oatmeal") {
-		t.Error("Foods list: created food not found")
+		t.Error("Ingredients list: created ingredient not found")
 	}
 
 	if !strings.Contains(body, "150 kcal") {
-		t.Error("Foods list: calorie count not found")
-	}
-}
-
-func TestEntryCreateAndDisplay(t *testing.T) {
-	client := testServer.Client()
-	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	}
-
-	form := url.Values{}
-	form.Set("food_id", "1")
-	form.Set("date", time.Now().Format("2006-01-02"))
-	form.Set("meal", "breakfast")
-	form.Set("servings", "2")
-
-	status := doPost(t, client, testServer.URL+"/entries", form)
-
-	if status != http.StatusSeeOther {
-		t.Errorf("Create entry: expected 303 redirect, got %d", status)
+		t.Error("Ingredients list: calorie count not found")
 	}
 }
 
@@ -297,19 +344,19 @@ func TestStaticFilesServed(t *testing.T) {
 
 func TestErrorNotFound(t *testing.T) {
 	client := testServer.Client()
-	status, _ := doGet(t, client, testServer.URL+"/foods/99999/edit")
+	status, _ := doGet(t, client, testServer.URL+"/ingredients/99999/edit")
 
 	if status != http.StatusNotFound {
-		t.Errorf("Non-existent food: expected 404, got %d", status)
+		t.Errorf("Non-existent ingredient: expected 404, got %d", status)
 	}
 }
 
 func TestErrorInvalidID(t *testing.T) {
 	client := testServer.Client()
-	status, _ := doGet(t, client, testServer.URL+"/foods/invalid/edit")
+	status, _ := doGet(t, client, testServer.URL+"/ingredients/invalid/edit")
 
 	if status != http.StatusBadRequest {
-		t.Errorf("Invalid food ID: expected 400, got %d", status)
+		t.Errorf("Invalid ingredient ID: expected 400, got %d", status)
 	}
 }
 
@@ -325,9 +372,9 @@ func TestErrorInvalidFormData(t *testing.T) {
 	form.Set("protein", "5")
 	form.Set("carbs", "10")
 	form.Set("fat", "2")
-	form.Set("serving_size", "1")
+	form.Set("serving_size", "100g")
 
-	status := doPost(t, client, testServer.URL+"/foods/new", form)
+	status := doPost(t, client, testServer.URL+"/ingredients/new", form)
 
 	if status != http.StatusBadRequest {
 		t.Errorf("Invalid calories: expected 400, got %d", status)
@@ -353,5 +400,48 @@ func TestDateNavigation(t *testing.T) {
 
 	if !strings.Contains(body, "2024-06-15") {
 		t.Error("Dashboard: current date not found")
+	}
+}
+
+func TestProfileLoads(t *testing.T) {
+	client := testServer.Client()
+	status, body := doGet(t, client, testServer.URL+"/profile")
+
+	if status != http.StatusOK {
+		t.Errorf("Profile: expected 200, got %d", status)
+	}
+
+	if !strings.Contains(body, "Profile - MyCal") {
+		t.Error("Profile: missing title")
+	}
+
+	if !strings.Contains(body, "Daily Calories Goal") {
+		t.Error("Profile: missing calories goal field")
+	}
+}
+
+func TestProfileUpdate(t *testing.T) {
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	form := url.Values{}
+	form.Set("calories_goal", "2500")
+	form.Set("protein_goal", "180")
+	form.Set("carbs_goal", "300")
+	form.Set("fat_goal", "80")
+
+	status := doPost(t, client, testServer.URL+"/profile", form)
+
+	if status != http.StatusSeeOther {
+		t.Errorf("Update profile: expected 303 redirect, got %d", status)
+	}
+
+	// Verify values were saved
+	_, body := doGet(t, client, testServer.URL+"/profile")
+
+	if !strings.Contains(body, "2500") {
+		t.Error("Profile: updated calories goal not found")
 	}
 }

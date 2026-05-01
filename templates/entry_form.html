@@ -12,7 +12,7 @@
                 <label for="food_id" class="form-label">Food</label>
                 <select name="food_id" id="food_id" required class="form-select">
                     {{range .Foods}}
-                    <option value="{{.ID}}" {{if eq .ID $.Entry.FoodID}}selected{{end}}>{{.Name}} ({{.Calories}} cal)</option>
+                    <option value="{{.ID}}" {{if eq .ID $.Entry.FoodID}}selected{{end}}>{{.Name}} ({{.Calories}} kcal)</option>
                     {{end}}
                 </select>
             </div>
@@ -38,7 +38,7 @@
 
             <div class="d-flex gap-2 justify-content-end">
                 <a href="/?date={{.Entry.Date}}" class="btn btn-outline-secondary">Cancel</a>
-                <button type="submit" class="btn btn-success">Save</button>
+                <button type="submit" class="btn btn-accent">Save</button>
             </div>
         </form>
     </div>

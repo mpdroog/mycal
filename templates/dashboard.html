@@ -22,7 +22,7 @@
             </div>
         </div>
         <div class="text-center">
-            <div class="fs-4 fw-bold">2000</div>
+            <div class="fs-4 fw-bold">{{.Profile.CaloriesGoal}}</div>
             <small class="opacity-75">goal</small>
         </div>
     </div>
@@ -32,10 +32,10 @@
             <div class="macro-progress">
                 <div class="d-flex justify-content-center gap-1 mb-1">
                     <span class="fw-bold">{{printf "%.0f" .Summary.Carbs}}</span>
-                    <span class="opacity-75">/ 250g</span>
+                    <span class="opacity-75">/ {{printf "%.0f" .Profile.CarbsGoal}}g</span>
                 </div>
                 <div class="progress" style="height: 4px;">
-                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Carbs}}%;"></div>
+                    <div class="progress-bar bg-white" style="width: {{percentage .Summary.Carbs .Profile.CarbsGoal}}%;"></div>
                 </div>
                 <small class="opacity-75">Carbs</small>
             </div>
@@ -44,10 +44,10 @@
             <div class="macro-progress">
                 <div class="d-flex justify-content-center gap-1 mb-1">
                     <span class="fw-bold">{{printf "%.0f" .Summary.Protein}}</span>
-                    <span class="opacity-75">/ 150g</span>
+                    <span class="opacity-75">/ {{printf "%.0f" .Profile.ProteinGoal}}g</span>
                 </div>
                 <div class="progress" style="height: 4px;">
-                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Protein}}%;"></div>
+                    <div class="progress-bar bg-white" style="width: {{percentage .Summary.Protein .Profile.ProteinGoal}}%;"></div>
                 </div>
                 <small class="opacity-75">Protein</small>
             </div>
@@ -56,10 +56,10 @@
             <div class="macro-progress">
                 <div class="d-flex justify-content-center gap-1 mb-1">
                     <span class="fw-bold">{{printf "%.0f" .Summary.Fat}}</span>
-                    <span class="opacity-75">/ 65g</span>
+                    <span class="opacity-75">/ {{printf "%.0f" .Profile.FatGoal}}g</span>
                 </div>
                 <div class="progress" style="height: 4px;">
-                    <div class="progress-bar bg-white" style="width: {{printf "%.0f" .Summary.Fat}}%;"></div>
+                    <div class="progress-bar bg-white" style="width: {{percentage .Summary.Fat .Profile.FatGoal}}%;"></div>
                 </div>
                 <small class="opacity-75">Fat</small>
             </div>

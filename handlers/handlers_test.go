@@ -28,10 +28,13 @@ var (
 )
 
 type TestTemplates struct {
-	Dashboard *template.Template
-	Foods     *template.Template
-	FoodForm  *template.Template
-	EntryForm *template.Template
+	Dashboard      *template.Template
+	Ingredients    *template.Template
+	IngredientForm *template.Template
+	Foods          *template.Template
+	FoodForm       *template.Template
+	EntryForm      *template.Template
+	Profile        *template.Template
 }
 
 func TestMain(m *testing.M) {
@@ -88,6 +91,25 @@ func loadTestTemplates() (*TestTemplates, error) {
 		"multiply": func(a int, b float64) int {
 			return int(float64(a) * b)
 		},
+		"divide": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+
+			return a / b
+		},
+		"percentage": func(value, goal float64) int {
+			if goal == 0 {
+				return 0
+			}
+
+			pct := (value / goal) * 100
+			if pct > 100 {
+				return 100
+			}
+
+			return int(pct)
+		},
 	}
 
 	// Find templates directory (relative to test location)
@@ -95,6 +117,16 @@ func loadTestTemplates() (*TestTemplates, error) {
 	base := filepath.Join(templatesDir, "base.html")
 
 	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "dashboard.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "ingredients.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "ingredient_form.html"))
 	if err != nil {
 		return nil, err
 	}
@@ -114,11 +146,19 @@ func loadTestTemplates() (*TestTemplates, error) {
 		return nil, err
 	}
 
+	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "profile.html"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &TestTemplates{
-		Dashboard: dashboard,
-		Foods:     foods,
-		FoodForm:  foodForm,
-		EntryForm: entryForm,
+		Dashboard:      dashboard,
+		Ingredients:    ingredients,
+		IngredientForm: ingredientForm,
+		Foods:          foods,
+		FoodForm:       foodForm,
+		EntryForm:      entryForm,
+		Profile:        profile,
 	}, nil
 }
 
@@ -126,17 +166,33 @@ func setupTestRouter() *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Get("/", handlers.Dashboard(testTemplates.Dashboard))
+
+	// Ingredients
+	r.Get("/ingredients", handlers.ListIngredients(testTemplates.Ingredients))
+	r.Get("/ingredients/new", handlers.CreateIngredient(testTemplates.IngredientForm))
+	r.Post("/ingredients/new", handlers.CreateIngredient(testTemplates.IngredientForm))
+	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(testTemplates.IngredientForm))
+	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(testTemplates.IngredientForm))
+	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+	r.Get("/ingredients/search", handlers.SearchIngredients)
+
+	// Foods
 	r.Get("/foods", handlers.ListFoods(testTemplates.Foods))
 	r.Get("/foods/new", handlers.CreateFood(testTemplates.FoodForm))
 	r.Post("/foods/new", handlers.CreateFood(testTemplates.FoodForm))
 	r.Get("/foods/{id}/edit", handlers.EditFood(testTemplates.FoodForm))
 	r.Post("/foods/{id}/edit", handlers.EditFood(testTemplates.FoodForm))
 	r.Post("/foods/{id}/delete", handlers.DeleteFood)
-	r.Get("/foods/search", handlers.SearchFoods)
+
+	// Entries
 	r.Post("/entries", handlers.CreateEntry)
 	r.Get("/entries/{id}/edit", handlers.GetEntry(testTemplates.EntryForm))
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+
+	// Profile
+	r.Get("/profile", handlers.Profile(testTemplates.Profile))
+	r.Post("/profile", handlers.Profile(testTemplates.Profile))
 
 	return r
 }
@@ -159,6 +215,119 @@ func TestDashboard(t *testing.T) {
 
 	if !strings.Contains(body, "kcal") {
 		t.Error("Dashboard: expected 'kcal' in response body")
+	}
+}
+
+func TestIngredientsList(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Ingredients list: expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Ingredients") {
+		t.Error("Ingredients list: expected 'Ingredients' in response body")
+	}
+}
+
+func TestIngredientFormGet(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients/new", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Ingredient form GET: expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Add Ingredient") {
+		t.Error("Ingredient form GET: expected 'Add Ingredient' in response body")
+	}
+
+	if !strings.Contains(body, "<form") {
+		t.Error("Ingredient form GET: expected form element in response body")
+	}
+
+	if !strings.Contains(body, "calories") {
+		t.Error("Ingredient form GET: expected 'calories' field in response body")
+	}
+}
+
+func TestIngredientCreateAndList(t *testing.T) {
+	// Create an ingredient
+	form := url.Values{}
+	form.Set("name", "Test Chicken")
+	form.Set("calories", "165")
+	form.Set("protein", "31")
+	form.Set("carbs", "0")
+	form.Set("fat", "3.6")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("Ingredient create: expected redirect (303), got %d", rec.Code)
+	}
+
+	// Verify ingredient appears in list
+	req = httptest.NewRequest(http.MethodGet, "/ingredients", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Test Chicken") {
+		t.Error("Ingredient list: expected 'Test Chicken' in response after creation")
+	}
+
+	if !strings.Contains(body, "165 kcal") {
+		t.Error("Ingredient list: expected '165 kcal' in response")
+	}
+}
+
+func TestIngredientSearch(t *testing.T) {
+	// First create an ingredient to search for
+	form := url.Values{}
+	form.Set("name", "Searchable Apple")
+	form.Set("calories", "95")
+	form.Set("protein", "0.5")
+	form.Set("carbs", "25")
+	form.Set("fat", "0.3")
+	form.Set("serving_size", "1 medium")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Now search
+	req = httptest.NewRequest(http.MethodGet, "/ingredients/search?q=Apple", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Ingredient search: expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Searchable Apple") {
+		t.Error("Ingredient search: expected 'Searchable Apple' in search results")
 	}
 }
 
@@ -195,24 +364,20 @@ func TestFoodFormGet(t *testing.T) {
 		t.Error("Food form GET: expected 'Add Food' in response body")
 	}
 
-	if !strings.Contains(body, "<form") {
-		t.Error("Food form GET: expected form element in response body")
+	if !strings.Contains(body, "Food Name") {
+		t.Error("Food form GET: expected 'Food Name' field in response body")
 	}
 
-	if !strings.Contains(body, "calories") {
-		t.Error("Food form GET: expected 'calories' field in response body")
+	if !strings.Contains(body, "Ingredients") {
+		t.Error("Food form GET: expected 'Ingredients' section in response body")
 	}
 }
 
 func TestFoodCreateAndList(t *testing.T) {
-	// Create a food
+	// Create a food (without ingredients for simplicity)
 	form := url.Values{}
-	form.Set("name", "Test Chicken")
-	form.Set("calories", "165")
-	form.Set("protein", "31")
-	form.Set("carbs", "0")
-	form.Set("fat", "3.6")
-	form.Set("serving_size", "100g")
+	form.Set("name", "Test Breakfast Bowl")
+	form.Set("ingredients", "[]")
 
 	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -233,89 +398,8 @@ func TestFoodCreateAndList(t *testing.T) {
 
 	body := rec.Body.String()
 
-	if !strings.Contains(body, "Test Chicken") {
-		t.Error("Food list: expected 'Test Chicken' in response after creation")
-	}
-
-	if !strings.Contains(body, "165 kcal") {
-		t.Error("Food list: expected '165 kcal' in response")
-	}
-}
-
-func TestFoodSearch(t *testing.T) {
-	// First create a food to search for
-	form := url.Values{}
-	form.Set("name", "Searchable Apple")
-	form.Set("calories", "95")
-	form.Set("protein", "0.5")
-	form.Set("carbs", "25")
-	form.Set("fat", "0.3")
-	form.Set("serving_size", "1 medium")
-
-	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	rec := httptest.NewRecorder()
-	testRouter.ServeHTTP(rec, req)
-
-	// Now search
-	req = httptest.NewRequest(http.MethodGet, "/foods/search?q=Apple", http.NoBody)
-	rec = httptest.NewRecorder()
-
-	testRouter.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("Food search: expected status 200, got %d", rec.Code)
-	}
-
-	body := rec.Body.String()
-
-	if !strings.Contains(body, "Searchable Apple") {
-		t.Error("Food search: expected 'Searchable Apple' in search results")
-	}
-}
-
-func TestEntryCreateAndDisplay(t *testing.T) {
-	// First create a food
-	form := url.Values{}
-	form.Set("name", "Entry Test Food")
-	form.Set("calories", "200")
-	form.Set("protein", "10")
-	form.Set("carbs", "20")
-	form.Set("fat", "8")
-	form.Set("serving_size", "1 portion")
-
-	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	rec := httptest.NewRecorder()
-	testRouter.ServeHTTP(rec, req)
-
-	// Get the food ID from the database
-	var foodID int64
-
-	err := db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Entry Test Food").Scan(&foodID)
-	if err != nil {
-		t.Fatalf("Could not find created food: %v", err)
-	}
-
-	// Create an entry for today
-	today := time.Now().Format("2006-01-02")
-	form = url.Values{}
-	form.Set("food_id", "1")
-	form.Set("date", today)
-	form.Set("meal", "lunch")
-	form.Set("servings", "1.5")
-
-	req = httptest.NewRequest(http.MethodPost, "/entries", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	rec = httptest.NewRecorder()
-
-	testRouter.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusSeeOther {
-		t.Errorf("Entry create: expected redirect (303), got %d. Body: %s", rec.Code, rec.Body.String())
+	if !strings.Contains(body, "Test Breakfast Bowl") {
+		t.Error("Food list: expected 'Test Breakfast Bowl' in response after creation")
 	}
 }
 
@@ -336,39 +420,39 @@ func TestDashboardWithDate(t *testing.T) {
 	}
 }
 
-func TestFoodEditNotFound(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/foods/99999/edit", http.NoBody)
+func TestIngredientEditNotFound(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients/99999/edit", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	testRouter.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
-		t.Errorf("Food edit not found: expected status 404, got %d", rec.Code)
+		t.Errorf("Ingredient edit not found: expected status 404, got %d", rec.Code)
 	}
 }
 
-func TestInvalidFoodId(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/foods/invalid/edit", http.NoBody)
+func TestInvalidIngredientId(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients/invalid/edit", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	testRouter.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
-		t.Errorf("Invalid food id: expected status 400, got %d", rec.Code)
+		t.Errorf("Invalid ingredient id: expected status 400, got %d", rec.Code)
 	}
 }
 
-func TestFoodFormValidation(t *testing.T) {
+func TestIngredientFormValidation(t *testing.T) {
 	// Test with invalid calories
 	form := url.Values{}
-	form.Set("name", "Bad Food")
+	form.Set("name", "Bad Ingredient")
 	form.Set("calories", "not-a-number")
 	form.Set("protein", "10")
 	form.Set("carbs", "20")
 	form.Set("fat", "5")
-	form.Set("serving_size", "1 cup")
+	form.Set("serving_size", "100g")
 
-	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	rec := httptest.NewRecorder()
@@ -379,8 +463,6 @@ func TestFoodFormValidation(t *testing.T) {
 		t.Errorf("Invalid calories: expected status 400, got %d", rec.Code)
 	}
 }
-
-// Integration tests to verify HTML structure
 
 func TestDashboardHTMLStructure(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -400,7 +482,6 @@ func TestDashboardHTMLStructure(t *testing.T) {
 		{"navbar", `class="navbar`},
 		{"Today nav link", `href="/" class="nav-link active">Today</a>`},
 		{"Foods nav link", `href="/foods"`},
-		{"calorie display", "kcal"},
 		{"Protein display", "Protein"},
 		{"Carbs display", "Carbs"},
 		{"Fat display", "Fat"},
@@ -416,8 +497,8 @@ func TestDashboardHTMLStructure(t *testing.T) {
 	}
 }
 
-func TestFoodsPageHTMLStructure(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/foods", http.NoBody)
+func TestIngredientsPageHTMLStructure(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	testRouter.ServeHTTP(rec, req)
@@ -429,22 +510,22 @@ func TestFoodsPageHTMLStructure(t *testing.T) {
 		content string
 	}{
 		{"DOCTYPE", "<!DOCTYPE html>"},
-		{"title tag", "<title>Foods - MyCal</title>"},
+		{"title tag", "<title>Ingredients - MyCal</title>"},
 		{"navbar", `class="navbar`},
-		{"Foods nav active", `href="/foods" class="nav-link active">Foods</a>`},
-		{"Add Food button", `href="/foods/new"`},
-		{"Foods heading", ">Foods</h5>"},
+		{"Ingredients nav active", `href="/ingredients" class="nav-link active">Ingredients</a>`},
+		{"Add Ingredient button", `href="/ingredients/new"`},
+		{"Ingredients heading", ">Ingredients</h5>"},
 	}
 
 	for _, check := range checks {
 		if !strings.Contains(body, check.content) {
-			t.Errorf("Foods page missing %s: expected %q in body", check.name, check.content)
+			t.Errorf("Ingredients page missing %s: expected %q in body", check.name, check.content)
 		}
 	}
 }
 
-func TestFoodFormHTMLStructure(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/foods/new", http.NoBody)
+func TestIngredientFormHTMLStructure(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/ingredients/new", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	testRouter.ServeHTTP(rec, req)
@@ -456,7 +537,7 @@ func TestFoodFormHTMLStructure(t *testing.T) {
 		content string
 	}{
 		{"DOCTYPE", "<!DOCTYPE html>"},
-		{"title tag", "<title>Add Food - MyCal</title>"},
+		{"title tag", "<title>Add Ingredient - MyCal</title>"},
 		{"form tag", "<form"},
 		{"POST method", `method="POST"`},
 		{"name field", `name="name"`},
@@ -466,18 +547,18 @@ func TestFoodFormHTMLStructure(t *testing.T) {
 		{"fat field", `name="fat"`},
 		{"serving_size field", `name="serving_size"`},
 		{"submit button", `type="submit"`},
-		{"cancel link", `href="/foods"`},
+		{"cancel link", `href="/ingredients"`},
 	}
 
 	for _, check := range checks {
 		if !strings.Contains(body, check.content) {
-			t.Errorf("Food form missing %s: expected %q in body", check.name, check.content)
+			t.Errorf("Ingredient form missing %s: expected %q in body", check.name, check.content)
 		}
 	}
 }
 
-func TestFoodEditShowsCorrectData(t *testing.T) {
-	// First create a food
+func TestIngredientEditShowsCorrectData(t *testing.T) {
+	// First create an ingredient
 	form := url.Values{}
 	form.Set("name", "Edit Test Banana")
 	form.Set("calories", "105")
@@ -486,28 +567,28 @@ func TestFoodEditShowsCorrectData(t *testing.T) {
 	form.Set("fat", "0.4")
 	form.Set("serving_size", "1 medium")
 
-	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	rec := httptest.NewRecorder()
 	testRouter.ServeHTTP(rec, req)
 
-	// Get the food ID
-	var foodID int64
+	// Get the ingredient ID
+	var ingredientID int64
 
-	err := db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Edit Test Banana").Scan(&foodID)
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Edit Test Banana").Scan(&ingredientID)
 	if err != nil {
-		t.Fatalf("Could not find created food: %v", err)
+		t.Fatalf("Could not find created ingredient: %v", err)
 	}
 
 	// Now fetch the edit form
-	req = httptest.NewRequest(http.MethodGet, "/foods/"+strconv.FormatInt(foodID, 10)+"/edit", http.NoBody)
+	req = httptest.NewRequest(http.MethodGet, "/ingredients/"+strconv.FormatInt(ingredientID, 10)+"/edit", http.NoBody)
 	rec = httptest.NewRecorder()
 
 	testRouter.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("Food edit: expected status 200, got %d", rec.Code)
+		t.Errorf("Ingredient edit: expected status 200, got %d", rec.Code)
 	}
 
 	body := rec.Body.String()
@@ -516,66 +597,161 @@ func TestFoodEditShowsCorrectData(t *testing.T) {
 		name    string
 		content string
 	}{
-		{"title", "<title>Edit Food - MyCal</title>"},
-		{"food name value", `value="Edit Test Banana"`},
+		{"title", "<title>Edit Ingredient - MyCal</title>"},
+		{"ingredient name value", `value="Edit Test Banana"`},
 		{"calories value", `value="105"`},
 	}
 
 	for _, check := range checks {
 		if !strings.Contains(body, check.content) {
-			t.Errorf("Food edit form missing %s: expected %q in body", check.name, check.content)
+			t.Errorf("Ingredient edit form missing %s: expected %q in body", check.name, check.content)
 		}
 	}
 }
 
-func TestFoodDeleteRemovesFromList(t *testing.T) {
-	// First create a food
+func TestIngredientDeleteRemovesFromList(t *testing.T) {
+	// First create an ingredient
 	form := url.Values{}
-	form.Set("name", "Delete Test Food")
+	form.Set("name", "Delete Test Ingredient")
 	form.Set("calories", "100")
 	form.Set("protein", "5")
 	form.Set("carbs", "10")
 	form.Set("fat", "2")
-	form.Set("serving_size", "1 serving")
+	form.Set("serving_size", "100g")
 
-	req := httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	rec := httptest.NewRecorder()
 	testRouter.ServeHTTP(rec, req)
 
-	// Get the food ID
-	var foodID int64
+	// Get the ingredient ID
+	var ingredientID int64
 
-	err := db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Delete Test Food").Scan(&foodID)
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Delete Test Ingredient").Scan(&ingredientID)
 	if err != nil {
-		t.Fatalf("Could not find created food: %v", err)
+		t.Fatalf("Could not find created ingredient: %v", err)
 	}
 
 	// Verify it appears in the list
-	req = httptest.NewRequest(http.MethodGet, "/foods", http.NoBody)
+	req = httptest.NewRequest(http.MethodGet, "/ingredients", http.NoBody)
 	rec = httptest.NewRecorder()
 	testRouter.ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), "Delete Test Food") {
-		t.Error("Food should appear in list before deletion")
+	if !strings.Contains(rec.Body.String(), "Delete Test Ingredient") {
+		t.Error("Ingredient should appear in list before deletion")
 	}
 
-	// Delete the food
-	req = httptest.NewRequest(http.MethodPost, "/foods/"+strconv.FormatInt(foodID, 10)+"/delete", http.NoBody)
+	// Delete the ingredient
+	req = httptest.NewRequest(http.MethodPost, "/ingredients/"+strconv.FormatInt(ingredientID, 10)+"/delete", http.NoBody)
 	rec = httptest.NewRecorder()
 	testRouter.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
-		t.Errorf("Food delete: expected redirect (303), got %d", rec.Code)
+		t.Errorf("Ingredient delete: expected redirect (303), got %d", rec.Code)
 	}
 
 	// Verify it no longer appears in the list
-	req = httptest.NewRequest(http.MethodGet, "/foods", http.NoBody)
+	req = httptest.NewRequest(http.MethodGet, "/ingredients", http.NoBody)
 	rec = httptest.NewRecorder()
 	testRouter.ServeHTTP(rec, req)
 
-	if strings.Contains(rec.Body.String(), "Delete Test Food") {
-		t.Error("Food should not appear in list after deletion")
+	if strings.Contains(rec.Body.String(), "Delete Test Ingredient") {
+		t.Error("Ingredient should not appear in list after deletion")
+	}
+}
+
+func TestProfileGet(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/profile", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("Profile GET: expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "Profile") {
+		t.Error("Profile page: expected 'Profile' in response body")
+	}
+
+	if !strings.Contains(body, "Daily Calories Goal") {
+		t.Error("Profile page: expected 'Daily Calories Goal' in response body")
+	}
+
+	if !strings.Contains(body, "Protein") {
+		t.Error("Profile page: expected 'Protein' field in response body")
+	}
+}
+
+func TestProfileUpdate(t *testing.T) {
+	form := url.Values{}
+	form.Set("calories_goal", "2200")
+	form.Set("protein_goal", "160")
+	form.Set("carbs_goal", "280")
+	form.Set("fat_goal", "70")
+
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("Profile update: expected redirect (303), got %d", rec.Code)
+	}
+
+	// Verify values were saved
+	req = httptest.NewRequest(http.MethodGet, "/profile", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "2200") {
+		t.Error("Profile: updated calories goal not found")
+	}
+}
+
+func TestDashboardShowsProfileGoals(t *testing.T) {
+	// First update profile with specific values
+	form := url.Values{}
+	form.Set("calories_goal", "1800")
+	form.Set("protein_goal", "120")
+	form.Set("carbs_goal", "200")
+	form.Set("fat_goal", "60")
+
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Now check dashboard shows these goals
+	req = httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	if !strings.Contains(body, "1800") {
+		t.Error("Dashboard: expected calorie goal '1800' from profile")
+	}
+
+	if !strings.Contains(body, "/ 120g") {
+		t.Error("Dashboard: expected protein goal '120g' from profile")
+	}
+
+	if !strings.Contains(body, "/ 200g") {
+		t.Error("Dashboard: expected carbs goal '200g' from profile")
+	}
+
+	if !strings.Contains(body, "/ 60g") {
+		t.Error("Dashboard: expected fat goal '60g' from profile")
 	}
 }

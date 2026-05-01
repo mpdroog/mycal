@@ -8,7 +8,8 @@ import (
 // ErrNotFound is returned when a database record is not found.
 var ErrNotFound = sql.ErrNoRows
 
-type Food struct {
+// Ingredient is a base food item with nutritional values per serving.
+type Ingredient struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`
 	Calories    int       `json:"calories"`
@@ -17,6 +18,33 @@ type Food struct {
 	Fat         float64   `json:"fat"`
 	ServingSize string    `json:"serving_size"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// FoodIngredient links an ingredient to a food with a specific amount.
+type FoodIngredient struct {
+	ID           int64   `json:"id"`
+	FoodID       int64   `json:"food_id"`
+	IngredientID int64   `json:"ingredient_id"`
+	AmountGrams  float64 `json:"amount_grams"`
+
+	// Joined fields
+	Ingredient *Ingredient `json:"ingredient,omitempty"`
+}
+
+// Food is a combination of ingredients (a recipe).
+type Food struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Computed from ingredients
+	Calories int     `json:"calories"`
+	Protein  float64 `json:"protein"`
+	Carbs    float64 `json:"carbs"`
+	Fat      float64 `json:"fat"`
+
+	// Joined fields
+	Ingredients []FoodIngredient `json:"ingredients,omitempty"`
 }
 
 type Entry struct {
@@ -55,4 +83,12 @@ type DaySummary struct {
 	Carbs    float64 `json:"carbs"`
 	Fat      float64 `json:"fat"`
 	Entries  []Entry `json:"entries"`
+}
+
+// Profile contains user's daily nutritional goals.
+type Profile struct {
+	CaloriesGoal int     `json:"calories_goal"`
+	ProteinGoal  float64 `json:"protein_goal"`
+	CarbsGoal    float64 `json:"carbs_goal"`
+	FatGoal      float64 `json:"fat_goal"`
 }

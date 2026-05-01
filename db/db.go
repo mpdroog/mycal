@@ -46,16 +46,32 @@ func Close() error {
 
 func migrate() error {
 	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS foods (
+		// Ingredients table (base nutritional items)
+		`CREATE TABLE IF NOT EXISTS ingredients (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			calories INTEGER NOT NULL DEFAULT 0,
 			protein REAL NOT NULL DEFAULT 0,
 			carbs REAL NOT NULL DEFAULT 0,
 			fat REAL NOT NULL DEFAULT 0,
-			serving_size TEXT NOT NULL DEFAULT '1 serving',
+			serving_size TEXT NOT NULL DEFAULT '100g',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
+		// Foods table (combinations of ingredients)
+		`CREATE TABLE IF NOT EXISTS foods (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)`,
+		// Junction table linking foods to ingredients with amounts
+		`CREATE TABLE IF NOT EXISTS food_ingredients (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			food_id INTEGER NOT NULL REFERENCES foods(id) ON DELETE CASCADE,
+			ingredient_id INTEGER NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+			amount_grams REAL NOT NULL DEFAULT 100
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_food_ingredients_food ON food_ingredients(food_id)`,
+		// Entries reference foods (not ingredients directly)
 		`CREATE TABLE IF NOT EXISTS entries (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			food_id INTEGER REFERENCES foods(id) ON DELETE CASCADE,
@@ -78,6 +94,16 @@ func migrate() error {
 			template_id INTEGER REFERENCES meal_templates(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_planned_meals_date ON planned_meals(date)`,
+		// Profile/settings table (single row for user preferences)
+		`CREATE TABLE IF NOT EXISTS profile (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			calories_goal INTEGER NOT NULL DEFAULT 2000,
+			protein_goal REAL NOT NULL DEFAULT 150,
+			carbs_goal REAL NOT NULL DEFAULT 250,
+			fat_goal REAL NOT NULL DEFAULT 65
+		)`,
+		// Insert default profile if not exists
+		`INSERT OR IGNORE INTO profile (id, calories_goal, protein_goal, carbs_goal, fat_goal) VALUES (1, 2000, 150, 250, 65)`,
 	}
 
 	for _, m := range migrations {

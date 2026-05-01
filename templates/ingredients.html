@@ -2,22 +2,21 @@
 
 {{define "content"}}
 <div class="d-flex align-items-center justify-content-between mb-3">
-    <h5 class="mb-0">Foods</h5>
-    <a href="/foods/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
+    <h5 class="mb-0">Ingredients</h5>
+    <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
 </div>
 
-{{if .Foods}}
+{{if .Ingredients}}
 <div class="card">
     <ul class="list-unstyled mb-0">
-        {{range .Foods}}
+        {{range .Ingredients}}
         <li class="d-flex align-items-center p-3 border-bottom gap-3">
-            <div class="food-icon rounded-circle bg-accent d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
-                <span>🍽</span>
+            <div class="food-icon rounded-circle bg-secondary d-flex align-items-center justify-content-center flex-shrink-0" style="width: 48px; height: 48px;">
+                <span>🥗</span>
             </div>
             <div class="flex-grow-1 min-width-0">
                 <div class="fw-medium text-truncate">{{.Name}}</div>
-                <small class="text-accent">{{.Calories}} kcal</small>
-                <small class="text-secondary ms-2">{{len .Ingredients}} ingredient(s)</small>
+                <small class="text-accent">{{.Calories}} kcal / {{.ServingSize}}</small>
             </div>
             <div class="d-none d-sm-flex align-items-center gap-3 text-secondary small">
                 <span>P: {{printf "%.1f" .Protein}}g</span>
@@ -29,10 +28,10 @@
                     <span>⋮</span>
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="/foods/{{.ID}}/edit">Edit</a></li>
+                    <li><a class="dropdown-item" href="/ingredients/{{.ID}}/edit">Edit</a></li>
                     <li>
-                        <form action="/foods/{{.ID}}/delete" method="POST">
-                            <button type="submit" class="dropdown-item text-danger" onclick="return confirm('Delete this food?')">Delete</button>
+                        <form action="/ingredients/{{.ID}}/delete" method="POST">
+                            <button type="submit" class="dropdown-item text-danger" onclick="return confirm('Delete this ingredient?')">Delete</button>
                         </form>
                     </li>
                 </ul>
@@ -43,8 +42,8 @@
 </div>
 {{else}}
 <div class="text-center py-5 text-secondary">
-    <p>No foods yet. Create your first food by combining ingredients!</p>
-    <a href="/foods/new" class="btn btn-accent">Add Food</a>
+    <p>No ingredients yet. Add your first ingredient to start building foods!</p>
+    <a href="/ingredients/new" class="btn btn-accent">Add Ingredient</a>
 </div>
 {{end}}
 {{end}}

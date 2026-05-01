@@ -41,20 +41,52 @@ var funcMap = template.FuncMap{
 	"multiply": func(a int, b float64) int {
 		return int(float64(a) * b)
 	},
+	"divide": func(a, b float64) float64 {
+		if b == 0 {
+			return 0
+		}
+
+		return a / b
+	},
+	"percentage": func(value, goal float64) int {
+		if goal == 0 {
+			return 0
+		}
+
+		pct := (value / goal) * 100
+		if pct > 100 {
+			return 100
+		}
+
+		return int(pct)
+	},
 }
 
 // Templates holds all parsed page templates.
 type Templates struct {
-	Dashboard *template.Template
-	Foods     *template.Template
-	FoodForm  *template.Template
-	EntryForm *template.Template
+	Dashboard      *template.Template
+	Ingredients    *template.Template
+	IngredientForm *template.Template
+	Foods          *template.Template
+	FoodForm       *template.Template
+	EntryForm      *template.Template
+	Profile        *template.Template
 }
 
 func loadTemplates() (*Templates, error) {
 	base := filepath.Join("templates", "base.html")
 
 	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "dashboard.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredients.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredient_form.html"))
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +106,19 @@ func loadTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "profile.html"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
-		Dashboard: dashboard,
-		Foods:     foods,
-		FoodForm:  foodForm,
-		EntryForm: entryForm,
+		Dashboard:      dashboard,
+		Ingredients:    ingredients,
+		IngredientForm: ingredientForm,
+		Foods:          foods,
+		FoodForm:       foodForm,
+		EntryForm:      entryForm,
+		Profile:        profile,
 	}, nil
 }
 
@@ -117,7 +157,16 @@ func main() {
 	// Routes
 	r.Get("/", handlers.Dashboard(tmpls.Dashboard))
 
-	// Foods
+	// Ingredients (base nutritional items)
+	r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
+	r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+	r.Get("/ingredients/search", handlers.SearchIngredients)
+
+	// Foods (combinations of ingredients)
 	r.Get("/foods", handlers.ListFoods(tmpls.Foods))
 	r.Get("/foods/new", handlers.CreateFood(tmpls.FoodForm))
 	r.Post("/foods/new", handlers.CreateFood(tmpls.FoodForm))
@@ -131,6 +180,10 @@ func main() {
 	r.Get("/entries/{id}/edit", handlers.GetEntry(tmpls.EntryForm))
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+
+	// Profile
+	r.Get("/profile", handlers.Profile(tmpls.Profile))
+	r.Post("/profile", handlers.Profile(tmpls.Profile))
 
 	log.Printf("Starting MyCal on %s", *addr)
 

@@ -1,0 +1,48 @@
+{{template "base" .}}
+
+{{define "content"}}
+<div class="mb-3">
+    <h5>{{.Title}}</h5>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST">
+            <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input type="text" id="name" name="name" value="{{.Ingredient.Name}}" required class="form-control" placeholder="e.g., Chicken Breast">
+            </div>
+
+            <div class="mb-3">
+                <label for="serving_size" class="form-label">Serving Size (nutritional values are per this amount)</label>
+                <input type="text" id="serving_size" name="serving_size" value="{{.Ingredient.ServingSize}}" class="form-control" placeholder="e.g., 100g">
+            </div>
+
+            <div class="mb-3">
+                <label for="calories" class="form-label">Calories</label>
+                <input type="number" id="calories" name="calories" value="{{.Ingredient.Calories}}" class="form-control" placeholder="0">
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col">
+                    <label for="protein" class="form-label">Protein (g)</label>
+                    <input type="number" id="protein" name="protein" value="{{printf "%.1f" .Ingredient.Protein}}" step="0.1" class="form-control">
+                </div>
+                <div class="col">
+                    <label for="carbs" class="form-label">Carbs (g)</label>
+                    <input type="number" id="carbs" name="carbs" value="{{printf "%.1f" .Ingredient.Carbs}}" step="0.1" class="form-control">
+                </div>
+                <div class="col">
+                    <label for="fat" class="form-label">Fat (g)</label>
+                    <input type="number" id="fat" name="fat" value="{{printf "%.1f" .Ingredient.Fat}}" step="0.1" class="form-control">
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-end">
+                <a href="/ingredients" class="btn btn-outline-secondary">Cancel</a>
+                <button type="submit" class="btn btn-accent">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{{end}}
