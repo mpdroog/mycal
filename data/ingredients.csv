@@ -1,0 +1,56 @@
+name,calories,protein,carbs,fat,serving_size
+Chicken Breast,165,31.0,0.0,3.6,100g
+Chicken Thigh,209,26.0,0.0,10.9,100g
+Salmon,208,20.0,0.0,13.0,100g
+Tuna (canned),116,26.0,0.0,1.0,100g
+Shrimp,99,24.0,0.2,0.3,100g
+Beef (lean ground),250,26.0,0.0,15.0,100g
+Beef Steak (sirloin),271,26.0,0.0,18.0,100g
+Pork Chop,231,25.0,0.0,14.0,100g
+Bacon,541,37.0,1.4,42.0,100g
+Turkey Breast,135,30.0,0.0,1.0,100g
+Tofu (firm),144,17.0,3.0,8.0,100g
+Tempeh,192,20.0,8.0,11.0,100g
+Egg,155,13.0,1.1,11.0,100g
+Egg White,52,11.0,0.7,0.2,100g
+Greek Yogurt,97,9.0,4.0,5.0,100g
+Cottage Cheese,98,11.0,3.4,4.3,100g
+Milk (whole),61,3.2,4.8,3.3,100g
+Milk (skim),34,3.4,5.0,0.1,100g
+Cheddar Cheese,403,25.0,1.3,33.0,100g
+Mozzarella,280,28.0,3.1,17.0,100g
+Rice (white, cooked),130,2.7,28.0,0.3,100g
+Rice (brown, cooked),112,2.6,24.0,0.9,100g
+Pasta (cooked),131,5.0,25.0,1.1,100g
+Bread (white),265,9.0,49.0,3.2,100g
+Bread (whole wheat),247,13.0,41.0,3.4,100g
+Oats,389,17.0,66.0,7.0,100g
+Quinoa (cooked),120,4.4,21.0,1.9,100g
+Potato,77,2.0,17.0,0.1,100g
+Sweet Potato,86,1.6,20.0,0.1,100g
+Broccoli,34,2.8,7.0,0.4,100g
+Spinach,23,2.9,3.6,0.4,100g
+Kale,49,4.3,9.0,0.9,100g
+Carrot,41,0.9,10.0,0.2,100g
+Bell Pepper,31,1.0,6.0,0.3,100g
+Tomato,18,0.9,3.9,0.2,100g
+Cucumber,16,0.7,3.6,0.1,100g
+Zucchini,17,1.2,3.1,0.3,100g
+Mushrooms,22,3.1,3.3,0.3,100g
+Onion,40,1.1,9.3,0.1,100g
+Garlic,149,6.4,33.0,0.5,100g
+Avocado,160,2.0,9.0,15.0,100g
+Banana,89,1.1,23.0,0.3,100g
+Apple,52,0.3,14.0,0.2,100g
+Orange,47,0.9,12.0,0.1,100g
+Strawberries,32,0.7,7.7,0.3,100g
+Blueberries,57,0.7,14.0,0.3,100g
+Almonds,579,21.0,22.0,50.0,100g
+Peanuts,567,26.0,16.0,49.0,100g
+Peanut Butter,588,25.0,20.0,50.0,100g
+Olive Oil,884,0.0,0.0,100.0,100g
+Butter,717,0.9,0.1,81.0,100g
+Honey,304,0.3,82.0,0.0,100g
+Lentils (cooked),116,9.0,20.0,0.4,100g
+Chickpeas (cooked),164,8.9,27.0,2.6,100g
+Black Beans (cooked),132,8.9,24.0,0.5,100g

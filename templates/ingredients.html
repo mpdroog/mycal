@@ -3,7 +3,34 @@
 {{define "content"}}
 <div class="d-flex align-items-center justify-content-between mb-3">
     <h5 class="mb-0">Ingredients</h5>
-    <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#importSection">
+            Import CSV
+        </button>
+        <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">+</a>
+    </div>
+</div>
+
+{{if .Imported}}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    Imported {{.Imported}} ingredients{{if .Skipped}}, skipped {{.Skipped}} (duplicates or errors){{end}}.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{{end}}
+
+<div class="collapse mb-3" id="importSection">
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title">Import from CSV</h6>
+            <p class="text-secondary small">CSV must have columns: name, calories, protein, carbs, fat. Optional: serving_size</p>
+            <form action="/ingredients/import" method="POST" enctype="multipart/form-data">
+                <div class="d-flex gap-2">
+                    <input type="file" name="csv" accept=".csv" class="form-control form-control-sm" required>
+                    <button type="submit" class="btn btn-accent btn-sm">Import</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 {{if .Ingredients}}

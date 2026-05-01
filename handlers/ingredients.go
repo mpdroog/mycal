@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -95,6 +97,15 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		data := map[string]interface{}{
 			"Title":       "Ingredients",
 			"Ingredients": ingredients,
+		}
+
+		// Pass import results if present
+		if imported := r.URL.Query().Get("imported"); imported != "" {
+			data["Imported"] = imported
+		}
+
+		if skipped := r.URL.Query().Get("skipped"); skipped != "" {
+			data["Skipped"] = skipped
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -305,4 +316,136 @@ func GetAllIngredients() ([]models.Ingredient, error) {
 	}
 
 	return ingredients, nil
+}
+
+// ImportIngredients handles CSV file upload and imports ingredients.
+// CSV format: name,calories,protein,carbs,fat,serving_size
+func ImportIngredients(w http.ResponseWriter, r *http.Request) {
+	// Max 10MB file
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, "File too large", http.StatusBadRequest)
+
+		return
+	}
+
+	file, _, err := r.FormFile("csv")
+	if err != nil {
+		http.Error(w, "No file uploaded", http.StatusBadRequest)
+
+		return
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	// Read header
+	header, err := reader.Read()
+	if err != nil {
+		http.Error(w, "Invalid CSV: "+err.Error(), http.StatusBadRequest)
+
+		return
+	}
+
+	// Map column names to indices
+	colMap := make(map[string]int)
+	for i, col := range header {
+		colMap[col] = i
+	}
+
+	// Check required columns
+	required := []string{"name", "calories", "protein", "carbs", "fat"}
+	for _, col := range required {
+		if _, ok := colMap[col]; !ok {
+			http.Error(w, "Missing required column: "+col, http.StatusBadRequest)
+
+			return
+		}
+	}
+
+	var imported, skipped int
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil {
+			log.Printf("ImportIngredients: error reading row: %v", err)
+			skipped++
+
+			continue
+		}
+
+		name := record[colMap["name"]]
+		if name == "" {
+			skipped++
+
+			continue
+		}
+
+		calories, err := strconv.Atoi(record[colMap["calories"]])
+		if err != nil {
+			log.Printf("ImportIngredients: invalid calories for %s: %v", name, err)
+			skipped++
+
+			continue
+		}
+
+		protein, err := strconv.ParseFloat(record[colMap["protein"]], 64)
+		if err != nil {
+			log.Printf("ImportIngredients: invalid protein for %s: %v", name, err)
+			skipped++
+
+			continue
+		}
+
+		carbs, err := strconv.ParseFloat(record[colMap["carbs"]], 64)
+		if err != nil {
+			log.Printf("ImportIngredients: invalid carbs for %s: %v", name, err)
+			skipped++
+
+			continue
+		}
+
+		fat, err := strconv.ParseFloat(record[colMap["fat"]], 64)
+		if err != nil {
+			log.Printf("ImportIngredients: invalid fat for %s: %v", name, err)
+			skipped++
+
+			continue
+		}
+
+		servingSize := "100g"
+		if idx, ok := colMap["serving_size"]; ok && idx < len(record) && record[idx] != "" {
+			servingSize = record[idx]
+		}
+
+		// Check if ingredient already exists
+		var existingID int64
+
+		existErr := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", name).Scan(&existingID)
+		if existErr == nil {
+			// Already exists, skip
+			skipped++
+
+			continue
+		}
+
+		// Insert new ingredient
+		_, insertErr := db.DB.Exec(`
+			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, name, calories, protein, carbs, fat, servingSize)
+		if insertErr != nil {
+			log.Printf("ImportIngredients: error inserting %s: %v", name, insertErr)
+			skipped++
+
+			continue
+		}
+
+		imported++
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/ingredients?imported=%d&skipped=%d", imported, skipped), http.StatusSeeOther)
 }

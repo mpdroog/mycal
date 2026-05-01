@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"html/template"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -86,6 +87,57 @@ func loadTestTemplates() (*TestTemplates, error) {
 			}
 
 			return t.AddDate(0, 0, 1).Format("2006-01-02")
+		},
+		"relativeDate": func(date string) string {
+			t, parseErr := time.Parse("2006-01-02", date)
+			if parseErr != nil {
+				return ""
+			}
+
+			now := time.Now()
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			target := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
+
+			days := int(target.Sub(today).Hours() / 24)
+
+			switch days {
+			case 0:
+				return "Today"
+			case 1:
+				return "Tomorrow"
+			case -1:
+				return "Yesterday"
+			}
+
+			weekday := t.Weekday().String()
+
+			if days >= 2 && days <= 6 {
+				return weekday
+			}
+
+			if days >= -6 && days <= -2 {
+				return "Last " + weekday
+			}
+
+			if days > 6 && days <= 13 {
+				return "Next " + weekday
+			}
+
+			weeks := days / 7
+			if days < 0 {
+				weeks = (-days) / 7
+				if weeks == 1 {
+					return weekday + ", 1 week ago"
+				}
+
+				return weekday + ", " + strconv.Itoa(weeks) + " weeks ago"
+			}
+
+			if weeks == 1 {
+				return weekday + ", in 1 week"
+			}
+
+			return weekday + ", in " + strconv.Itoa(weeks) + " weeks"
 		},
 		"title": cases.Title(language.English).String,
 		"multiply": func(a int, b float64) int {
@@ -181,6 +233,7 @@ func setupTestRouter() *chi.Mux {
 	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(testTemplates.IngredientForm))
 	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
 	r.Get("/ingredients/search", handlers.SearchIngredients)
+	r.Post("/ingredients/import", handlers.ImportIngredients)
 
 	// Foods
 	r.Get("/foods", handlers.ListFoods(testTemplates.Foods))
@@ -1005,5 +1058,334 @@ func TestCannotDeleteIngredientUsedInFoods(t *testing.T) {
 
 	if count != 1 {
 		t.Error("Ingredient should not be deleted when used in foods")
+	}
+}
+
+func TestFloatingSummaryPresentWithoutEntries(t *testing.T) {
+	// Get dashboard for a date with no entries
+	req := httptest.NewRequest(http.MethodGet, "/?date=1999-01-01", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Dashboard: expected 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	// Verify floating summary HTML is present
+	if !strings.Contains(body, `id="floatingSummary"`) {
+		t.Error("Floating summary HTML element should be present even without entries")
+	}
+
+	// Verify the scroll handler JavaScript is present and runs before any early returns
+	// The scroll handler must be set up before checking for entriesList
+	if !strings.Contains(body, "window.addEventListener('scroll', checkScroll") {
+		t.Error("Floating summary scroll handler should be present")
+	}
+
+	// Verify the scroll handler is defined before the entriesList check
+	scrollHandlerPos := strings.Index(body, "window.addEventListener('scroll', checkScroll")
+	entriesListCheckPos := strings.Index(body, "if (!entriesList) return")
+
+	if scrollHandlerPos == -1 || entriesListCheckPos == -1 {
+		t.Error("Could not find scroll handler or entriesList check in page")
+	} else if scrollHandlerPos > entriesListCheckPos {
+		t.Error("Scroll handler must be set up BEFORE the entriesList early return check")
+	}
+}
+
+func TestEntryServingsPersistedAndDisplayed(t *testing.T) {
+	// Create an ingredient with known calories (100 kcal per 100g)
+	form := url.Values{}
+	form.Set("name", "Test Servings Ingredient")
+	form.Set("calories", "100")
+	form.Set("protein", "10")
+	form.Set("carbs", "10")
+	form.Set("fat", "5")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Test Servings Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Create a food with this ingredient
+	form = url.Values{}
+	form.Set("name", "Test Servings Food")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var foodID int64
+
+	err = db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Test Servings Food").Scan(&foodID)
+	if err != nil {
+		t.Fatalf("Could not find food: %v", err)
+	}
+
+	// Create an entry with servings = 1
+	testDate := "2024-03-15"
+	form = url.Values{}
+	form.Set("food_id", strconv.FormatInt(foodID, 10))
+	form.Set("date", testDate)
+	form.Set("meal", "lunch")
+	form.Set("servings", "1")
+
+	req = httptest.NewRequest(http.MethodPost, "/entries", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var entryID int64
+
+	err = db.DB.QueryRow("SELECT id FROM entries WHERE food_id = ? AND date = ?", foodID, testDate).Scan(&entryID)
+	if err != nil {
+		t.Fatalf("Could not find entry: %v", err)
+	}
+
+	// Update servings to 5
+	form = url.Values{}
+	form.Set("servings", "5")
+
+	req = httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/servings", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Update servings: expected 200, got %d", rec.Code)
+	}
+
+	// Verify servings was saved in database
+	var savedServings float64
+
+	err = db.DB.QueryRow("SELECT servings FROM entries WHERE id = ?", entryID).Scan(&savedServings)
+	if err != nil {
+		t.Fatalf("Could not query entry: %v", err)
+	}
+
+	if savedServings != 5.0 {
+		t.Errorf("Servings not saved correctly: expected 5.0, got %.2f", savedServings)
+	}
+
+	// Load the dashboard and verify it shows 500 kcal (100 kcal * 5 servings)
+	req = httptest.NewRequest(http.MethodGet, "/?date="+testDate, http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Dashboard: expected 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	// The entry row should show 500 kcal
+	if !strings.Contains(body, "500 kcal") {
+		// Find what kcal value is actually shown
+		idx := strings.Index(body, "entry-calories")
+		if idx != -1 {
+			snippet := body[idx : idx+100]
+			t.Errorf("Dashboard should show 500 kcal (100 kcal * 5 servings) after reload. Found: %s", snippet)
+		} else {
+			t.Error("Dashboard should show 500 kcal (100 kcal * 5 servings) after reload - entry-calories not found")
+		}
+	}
+
+	// The servings input should show 5
+	if !strings.Contains(body, `value="5"`) && !strings.Contains(body, `value="5.0"`) {
+		t.Error("Servings input should show value 5 after reload")
+	}
+
+	// The total in the header should also be 500
+	// Look for the eaten calories display
+	if !strings.Contains(body, ">500<") {
+		t.Error("Dashboard header should show 500 calories eaten")
+	}
+}
+
+func TestQuickAddIngredientServingsPersistedAndDisplayed(t *testing.T) {
+	// Create an ingredient with known calories (200 kcal per 100g)
+	form := url.Values{}
+	form.Set("name", "Quick Add Test Ingredient")
+	form.Set("calories", "200")
+	form.Set("protein", "20")
+	form.Set("carbs", "10")
+	form.Set("fat", "10")
+	form.Set("serving_size", "100g")
+
+	req := httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Quick Add Test Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Quick add: Create entry directly from ingredient (this auto-creates a food)
+	testDate := "2024-03-16"
+	form = url.Values{}
+	form.Set("ingredient_id", strconv.FormatInt(ingredientID, 10))
+	form.Set("date", testDate)
+	form.Set("meal", "dinner")
+	form.Set("servings", "1")
+
+	req = httptest.NewRequest(http.MethodPost, "/entries", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("Create entry: expected 303, got %d", rec.Code)
+	}
+
+	// Find the entry
+	var entryID int64
+
+	err = db.DB.QueryRow("SELECT id FROM entries WHERE date = ?", testDate).Scan(&entryID)
+	if err != nil {
+		t.Fatalf("Could not find entry: %v", err)
+	}
+
+	// Update servings to 5
+	form = url.Values{}
+	form.Set("servings", "5")
+
+	req = httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/servings", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Update servings: expected 200, got %d", rec.Code)
+	}
+
+	// Verify servings was saved in database
+	var savedServings float64
+
+	err = db.DB.QueryRow("SELECT servings FROM entries WHERE id = ?", entryID).Scan(&savedServings)
+	if err != nil {
+		t.Fatalf("Could not query entry: %v", err)
+	}
+
+	if savedServings != 5.0 {
+		t.Errorf("Servings not saved correctly: expected 5.0, got %.2f", savedServings)
+	}
+
+	// Load the dashboard and verify it shows 1000 kcal (200 kcal * 5 servings)
+	req = httptest.NewRequest(http.MethodGet, "/?date="+testDate, http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Dashboard: expected 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+
+	// The entry row should show 1000 kcal (200 * 5)
+	if !strings.Contains(body, "1000 kcal") {
+		// Find what kcal value is actually shown
+		idx := strings.Index(body, "entry-calories")
+		if idx != -1 {
+			snippet := body[idx : idx+100]
+			t.Errorf("Dashboard should show 1000 kcal (200 kcal * 5 servings) after reload. Found: %s", snippet)
+		} else {
+			t.Error("Dashboard should show 1000 kcal (200 kcal * 5 servings) after reload - entry-calories not found")
+		}
+	}
+
+	// The servings input should show 5
+	if !strings.Contains(body, `value="5"`) && !strings.Contains(body, `value="5.0"`) {
+		t.Error("Servings input should show value 5 after reload")
+	}
+}
+
+func TestServingsUpdateWithMultipartForm(t *testing.T) {
+	// This test uses multipart/form-data like the JavaScript FormData does
+
+	// Create test data
+	_, err := db.DB.Exec(`INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size) VALUES ('Multipart Test Ing', 150, 15, 15, 5, '100g')`)
+	if err != nil {
+		t.Fatalf("Create ingredient: %v", err)
+	}
+
+	var ingID int64
+
+	db.DB.QueryRow("SELECT id FROM ingredients WHERE name = 'Multipart Test Ing'").Scan(&ingID)
+
+	_, err = db.DB.Exec(`INSERT INTO foods (name) VALUES ('Multipart Test Food')`)
+	if err != nil {
+		t.Fatalf("Create food: %v", err)
+	}
+
+	var foodID int64
+
+	db.DB.QueryRow("SELECT id FROM foods WHERE name = 'Multipart Test Food'").Scan(&foodID)
+
+	_, err = db.DB.Exec(`INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams) VALUES (?, ?, 100)`, foodID, ingID)
+	if err != nil {
+		t.Fatalf("Link ingredient: %v", err)
+	}
+
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-03-17', 'lunch', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Create entry: %v", err)
+	}
+
+	var entryID int64
+
+	db.DB.QueryRow("SELECT id FROM entries WHERE food_id = ? AND date = '2024-03-17'", foodID).Scan(&entryID)
+
+	// Create multipart form data (like JavaScript FormData)
+	body := &strings.Builder{}
+	writer := multipart.NewWriter(body)
+	writer.WriteField("servings", "5")
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/servings", strings.NewReader(body.String()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Update servings with multipart: expected 200, got %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify servings was saved
+	var savedServings float64
+
+	err = db.DB.QueryRow("SELECT servings FROM entries WHERE id = ?", entryID).Scan(&savedServings)
+	if err != nil {
+		t.Fatalf("Query entry: %v", err)
+	}
+
+	if savedServings != 5.0 {
+		t.Errorf("Servings not saved with multipart form: expected 5.0, got %.2f", savedServings)
 	}
 }

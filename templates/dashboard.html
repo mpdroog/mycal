@@ -4,8 +4,9 @@
 <div class="summary-header text-center text-white py-4 rounded-3 mb-3">
     <div class="d-flex align-items-center justify-content-center gap-3 mb-4">
         <a href="/?date={{.Summary.Date | prevDay}}" class="btn btn-outline-light btn-sm rounded-circle">&larr;</a>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex flex-column align-items-center gap-0">
             <span class="fs-6">{{.Date}}</span>
+            <small class="opacity-75">{{.Date | relativeDate}}</small>
         </div>
         <a href="/?date={{.Summary.Date | nextDay}}" class="btn btn-outline-light btn-sm rounded-circle">&rarr;</a>
     </div>
@@ -81,24 +82,9 @@
             <input type="hidden" name="date" value="{{.Date}}">
             <input type="hidden" name="food_id" id="foodIdInput" value="">
             <input type="hidden" name="ingredient_id" id="ingredientIdInput" value="">
-            <div class="mb-2">
-                <select id="itemSelect" required class="form-select">
-                    <option value="">Select food or ingredient...</option>
-                    {{if .Foods}}
-                    <optgroup label="Foods">
-                        {{range .Foods}}
-                        <option value="food:{{.ID}}" data-calories="{{.Calories}}">{{.Name}} ({{.Calories}} kcal)</option>
-                        {{end}}
-                    </optgroup>
-                    {{end}}
-                    {{if .Ingredients}}
-                    <optgroup label="Ingredients">
-                        {{range .Ingredients}}
-                        <option value="ingredient:{{.ID}}" data-calories="{{.Calories}}">{{.Name}} ({{.Calories}} kcal/{{.ServingSize}})</option>
-                        {{end}}
-                    </optgroup>
-                    {{end}}
-                </select>
+            <div class="mb-2 position-relative">
+                <input type="text" id="itemSearch" class="form-control" placeholder="Search food or ingredient..." autocomplete="off">
+                <div id="searchResults" class="position-absolute w-100 bg-dark border rounded-bottom shadow-lg d-none" style="z-index: 1050; max-height: 300px; overflow-y: auto;"></div>
             </div>
             <div class="row g-2 mb-2">
                 <div class="col">
@@ -119,6 +105,143 @@
         {{end}}
     </div>
 </div>
+
+<script>
+// Fuzzy search data
+const searchItems = [
+    {{range .Foods}}
+    { type: 'food', id: {{.ID}}, name: '{{.Name}}', calories: {{.Calories}}, label: '{{.Name}} ({{.Calories}} kcal)' },
+    {{end}}
+    {{range .Ingredients}}
+    { type: 'ingredient', id: {{.ID}}, name: '{{.Name}}', calories: {{.Calories}}, servingSize: '{{.ServingSize}}', label: '{{.Name}} ({{.Calories}} kcal/{{.ServingSize}})' },
+    {{end}}
+];
+
+// Initialize Fuse.js with fuzzy search options
+const fuse = new Fuse(searchItems, {
+    keys: ['name'],
+    threshold: 0.4,        // 0 = exact match, 1 = match anything
+    distance: 100,         // How far to search for matches
+    includeScore: true,
+    minMatchCharLength: 1,
+    ignoreLocation: true,  // Search anywhere in the string
+});
+
+const itemSearch = document.getElementById('itemSearch');
+const searchResults = document.getElementById('searchResults');
+const foodIdInput = document.getElementById('foodIdInput');
+const ingredientIdInput = document.getElementById('ingredientIdInput');
+let selectedItem = null;
+
+itemSearch.addEventListener('input', function() {
+    const query = this.value.trim();
+
+    if (query.length === 0) {
+        searchResults.classList.add('d-none');
+        searchResults.innerHTML = '';
+        return;
+    }
+
+    const results = fuse.search(query).slice(0, 10);
+
+    if (results.length === 0) {
+        searchResults.innerHTML = '<div class="p-3 text-secondary">No matches found</div>';
+        searchResults.classList.remove('d-none');
+        return;
+    }
+
+    searchResults.innerHTML = results.map((result, index) => {
+        const item = result.item;
+        const icon = item.type === 'food' ? '🍽️' : '🥗';
+        const typeLabel = item.type === 'food' ? 'Food' : 'Ingredient';
+        return `
+            <div class="search-result p-2 border-bottom" data-index="${index}" style="cursor: pointer;">
+                <div class="d-flex align-items-center gap-2">
+                    <span>${icon}</span>
+                    <div class="flex-grow-1">
+                        <div class="fw-medium">${item.name}</div>
+                        <small class="text-secondary">${typeLabel} · ${item.calories} kcal${item.servingSize ? '/' + item.servingSize : ''}</small>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    searchResults.classList.remove('d-none');
+
+    // Store results for selection
+    searchResults.dataset.results = JSON.stringify(results.map(r => r.item));
+});
+
+// Handle result click
+searchResults.addEventListener('click', function(e) {
+    const resultEl = e.target.closest('.search-result');
+    if (!resultEl) return;
+
+    const index = parseInt(resultEl.dataset.index);
+    const results = JSON.parse(this.dataset.results);
+    const item = results[index];
+
+    selectItem(item);
+});
+
+// Handle keyboard navigation
+itemSearch.addEventListener('keydown', function(e) {
+    const items = searchResults.querySelectorAll('.search-result');
+    const activeItem = searchResults.querySelector('.search-result.active');
+    let activeIndex = activeItem ? parseInt(activeItem.dataset.index) : -1;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        items.forEach((item, i) => item.classList.toggle('active', i === activeIndex));
+        items.forEach((item, i) => item.style.backgroundColor = i === activeIndex ? 'var(--bs-tertiary-bg)' : '');
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        items.forEach((item, i) => item.classList.toggle('active', i === activeIndex));
+        items.forEach((item, i) => item.style.backgroundColor = i === activeIndex ? 'var(--bs-tertiary-bg)' : '');
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+        e.preventDefault();
+        const results = JSON.parse(searchResults.dataset.results || '[]');
+        if (results[activeIndex]) {
+            selectItem(results[activeIndex]);
+        }
+    } else if (e.key === 'Escape') {
+        searchResults.classList.add('d-none');
+    }
+});
+
+function selectItem(item) {
+    selectedItem = item;
+    itemSearch.value = item.name;
+    searchResults.classList.add('d-none');
+
+    if (item.type === 'food') {
+        foodIdInput.value = item.id;
+        ingredientIdInput.value = '';
+    } else {
+        ingredientIdInput.value = item.id;
+        foodIdInput.value = '';
+    }
+}
+
+// Close results when clicking outside
+document.addEventListener('click', function(e) {
+    if (!itemSearch.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.classList.add('d-none');
+    }
+});
+
+// Validate form before submit
+document.getElementById('addEntryForm').addEventListener('submit', function(e) {
+    if (!foodIdInput.value && !ingredientIdInput.value) {
+        e.preventDefault();
+        itemSearch.focus();
+        showError('Please select a food or ingredient', 'Use the search box to find and select an item before adding.');
+    }
+});
+</script>
 
 <!-- Floating summary bar for mobile -->
 <div id="floatingSummary" class="d-none position-fixed bottom-0 start-0 end-0 bg-accent text-white py-2 px-3" style="z-index: 1000;">
@@ -169,29 +292,26 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Handle form submission - set correct hidden input based on selection
-    const form = document.getElementById('addEntryForm');
-    const itemSelect = document.getElementById('itemSelect');
-    const foodIdInput = document.getElementById('foodIdInput');
-    const ingredientIdInput = document.getElementById('ingredientIdInput');
+    // Show/hide floating summary based on scroll position
+    const floatingSummary = document.getElementById('floatingSummary');
+    const summaryHeader = document.querySelector('.summary-header');
 
-    form.addEventListener('submit', function(e) {
-        const value = itemSelect.value;
-        if (!value) {
-            e.preventDefault();
-            return;
+    if (floatingSummary && summaryHeader) {
+        function checkScroll() {
+            const rect = summaryHeader.getBoundingClientRect();
+            // Show floating bar when summary header starts scrolling off screen
+            if (rect.top < 0) {
+                floatingSummary.classList.remove('d-none');
+            } else {
+                floatingSummary.classList.add('d-none');
+            }
         }
-        const [type, id] = value.split(':');
-        if (type === 'food') {
-            foodIdInput.value = id;
-            ingredientIdInput.value = '';
-        } else {
-            ingredientIdInput.value = id;
-            foodIdInput.value = '';
-        }
-    });
 
-    // Toggle and servings functionality
+        window.addEventListener('scroll', checkScroll, { passive: true });
+        checkScroll();
+    }
+
+    // Toggle and servings functionality (requires entries)
     const entriesList = document.getElementById('entriesList');
     if (!entriesList) return;
 
@@ -316,25 +436,6 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
-
-    // Show/hide floating summary based on scroll position
-    const floatingSummary = document.getElementById('floatingSummary');
-    const summaryHeader = document.querySelector('.summary-header');
-
-    if (floatingSummary && summaryHeader) {
-        function checkScroll() {
-            const rect = summaryHeader.getBoundingClientRect();
-            // Show floating bar when summary header is mostly out of view
-            if (rect.bottom < 100) {
-                floatingSummary.classList.remove('d-none');
-            } else {
-                floatingSummary.classList.add('d-none');
-            }
-        }
-
-        window.addEventListener('scroll', checkScroll, { passive: true });
-        checkScroll();
-    }
 });
 </script>
 {{end}}

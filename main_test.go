@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,6 +78,57 @@ func loadTestTemplates() (*Templates, error) {
 			}
 
 			return t.AddDate(0, 0, 1).Format("2006-01-02")
+		},
+		"relativeDate": func(date string) string {
+			t, err := time.Parse("2006-01-02", date)
+			if err != nil {
+				return ""
+			}
+
+			now := time.Now()
+			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+			target := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
+
+			days := int(target.Sub(today).Hours() / 24)
+
+			switch days {
+			case 0:
+				return "Today"
+			case 1:
+				return "Tomorrow"
+			case -1:
+				return "Yesterday"
+			}
+
+			weekday := t.Weekday().String()
+
+			if days >= 2 && days <= 6 {
+				return weekday
+			}
+
+			if days >= -6 && days <= -2 {
+				return "Last " + weekday
+			}
+
+			if days > 6 && days <= 13 {
+				return "Next " + weekday
+			}
+
+			weeks := days / 7
+			if days < 0 {
+				weeks = (-days) / 7
+				if weeks == 1 {
+					return weekday + ", 1 week ago"
+				}
+
+				return weekday + ", " + strconv.Itoa(weeks) + " weeks ago"
+			}
+
+			if weeks == 1 {
+				return weekday + ", in 1 week"
+			}
+
+			return weekday + ", in " + strconv.Itoa(weeks) + " weeks"
 		},
 		"title": cases.Title(language.English).String,
 		"multiply": func(a int, b float64) int {
@@ -174,6 +226,7 @@ func setupRouter(tmpls *Templates) *chi.Mux {
 	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
 	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
 	r.Get("/ingredients/search", handlers.SearchIngredients)
+	r.Post("/ingredients/import", handlers.ImportIngredients)
 
 	// Foods
 	r.Get("/foods", handlers.ListFoods(tmpls.Foods))

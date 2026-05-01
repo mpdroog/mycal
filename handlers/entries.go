@@ -314,10 +314,14 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if parseErr := r.ParseForm(); parseErr != nil {
-		http.Error(w, parseErr.Error(), http.StatusBadRequest)
+	// Support both urlencoded and multipart form data (JavaScript FormData uses multipart)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		// Fall back to regular form parsing
+		if parseErr := r.ParseForm(); parseErr != nil {
+			http.Error(w, parseErr.Error(), http.StatusBadRequest)
 
-		return
+			return
+		}
 	}
 
 	servings, err := strconv.ParseFloat(r.FormValue("servings"), 64)
