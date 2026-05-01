@@ -120,8 +120,22 @@
     </div>
 </div>
 
+<!-- Floating summary bar for mobile -->
+<div id="floatingSummary" class="d-none position-fixed bottom-0 start-0 end-0 bg-accent text-white py-2 px-3" style="z-index: 1000;">
+    <div class="container container-narrow">
+        <div class="d-flex justify-content-between align-items-center">
+            <div><span class="fw-bold" id="floatCal">{{.Summary.Calories}}</span> / {{.Profile.CaloriesGoal}} kcal</div>
+            <div class="d-flex gap-3 small">
+                <span>P: <span id="floatPro">{{printf "%.0f" .Summary.Protein}}</span>g</span>
+                <span>C: <span id="floatCarb">{{printf "%.0f" .Summary.Carbs}}</span>g</span>
+                <span>F: <span id="floatFat">{{printf "%.0f" .Summary.Fat}}</span>g</span>
+            </div>
+        </div>
+    </div>
+</div>
+
 {{if .Summary.Entries}}
-<div class="card">
+<div class="card" style="margin-bottom: 60px;">
     <div class="card-body">
         <h6 class="card-title">Today's Entries</h6>
         <ul class="list-unstyled mb-0" id="entriesList">
@@ -256,6 +270,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const pct = Math.min(100, (totalCal / goalCalories) * 100);
             ringProgress.setAttribute('stroke-dasharray', pct + ', 100');
         }
+
+        // Update floating summary
+        const floatCal = document.getElementById('floatCal');
+        const floatPro = document.getElementById('floatPro');
+        const floatCarb = document.getElementById('floatCarb');
+        const floatFat = document.getElementById('floatFat');
+        if (floatCal) floatCal.textContent = totalCal;
+        if (floatPro) floatPro.textContent = Math.round(totalPro);
+        if (floatCarb) floatCarb.textContent = Math.round(totalCarb);
+        if (floatFat) floatFat.textContent = Math.round(totalFat);
     }
 
     entriesList.addEventListener('change', function(e) {
@@ -292,6 +316,25 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // Show/hide floating summary based on scroll position
+    const floatingSummary = document.getElementById('floatingSummary');
+    const summaryHeader = document.querySelector('.summary-header');
+
+    if (floatingSummary && summaryHeader) {
+        function checkScroll() {
+            const rect = summaryHeader.getBoundingClientRect();
+            // Show floating bar when summary header is mostly out of view
+            if (rect.bottom < 100) {
+                floatingSummary.classList.remove('d-none');
+            } else {
+                floatingSummary.classList.add('d-none');
+            }
+        }
+
+        window.addEventListener('scroll', checkScroll, { passive: true });
+        checkScroll();
+    }
 });
 </script>
 {{end}}
