@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/models"
 )
@@ -62,6 +63,8 @@ func parseIngredientForm(r *http.Request) (ingredientFormData, error) {
 
 func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		rows, err := db.DB.Query(`
 			SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
 			FROM ingredients WHERE deleted_at IS NULL ORDER BY name ASC
@@ -97,6 +100,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		data := map[string]interface{}{
 			"Title":       "Ingredients",
 			"Ingredients": ingredients,
+			"User":        user,
 		}
 
 		// Pass import results if present
@@ -116,10 +120,13 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 
 func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		if r.Method == http.MethodGet {
 			data := map[string]interface{}{
 				"Title":      "Add Ingredient",
 				"Ingredient": models.Ingredient{ServingSize: "100g"},
+				"User":       user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -150,7 +157,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 	}
 }
 
-func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *http.Request, id int64) {
+func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *http.Request, id int64, user *models.User) {
 	var i models.Ingredient
 
 	queryErr := db.DB.QueryRow(`
@@ -172,6 +179,7 @@ func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *h
 	data := map[string]interface{}{
 		"Title":      "Edit Ingredient",
 		"Ingredient": i,
+		"User":       user,
 	}
 
 	if tmplErr := tmpl.ExecuteTemplate(w, "base", data); tmplErr != nil {
@@ -181,6 +189,8 @@ func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *h
 
 func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", http.StatusBadRequest)
@@ -189,7 +199,7 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if r.Method == http.MethodGet {
-			showEditIngredientForm(tmpl, w, r, id)
+			showEditIngredientForm(tmpl, w, r, id, user)
 
 			return
 		}

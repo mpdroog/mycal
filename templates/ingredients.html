@@ -4,9 +4,11 @@
 <div class="d-flex align-items-center justify-content-between mb-3">
     <h5 class="mb-0">Ingredients</h5>
     <div class="d-flex gap-2">
+        {{if .User.IsAdmin}}
         <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#importSection">
             Import CSV
         </button>
+        {{end}}
         <a href="/ingredients/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center icon-circle-sm">+</a>
     </div>
 </div>
@@ -18,12 +20,13 @@
 </div>
 {{end}}
 
+{{if .User.IsAdmin}}
 <div class="collapse mb-3" id="importSection">
     <div class="card">
         <div class="card-body">
             <h6 class="card-title">Import from CSV</h6>
             <p class="text-secondary small">CSV must have columns: name, calories, protein, carbs, fat. Optional: serving_size</p>
-            <form action="/ingredients/import" method="POST" enctype="multipart/form-data">
+            <form action="/admin/ingredients/import" method="POST" enctype="multipart/form-data">
                 <div class="d-flex gap-2">
                     <input type="file" name="csv" accept=".csv" class="form-control form-control-sm" required>
                     <button type="submit" class="btn btn-accent btn-sm">Import</button>
@@ -32,6 +35,7 @@
         </div>
     </div>
 </div>
+{{end}}
 
 {{if .Ingredients}}
 <div class="card">

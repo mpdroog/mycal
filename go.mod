@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/go-chi/chi/v5 v5.2.5
+	golang.org/x/crypto v0.32.0
 	golang.org/x/text v0.36.0
 	modernc.org/sqlite v1.50.0
 )

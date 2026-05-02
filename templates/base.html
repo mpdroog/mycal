@@ -6,7 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#26a69a">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MyCal">
     <title>{{.Title}} - MyCal</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+    <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="/static/js/fuse.min.js"></script>
@@ -33,6 +39,7 @@
     <nav class="navbar navbar-expand navbar-dark sticky-top bg-accent">
         <div class="container">
             <a href="/" class="navbar-brand fw-bold">MyCal</a>
+            {{if .User}}
             <ul class="navbar-nav ms-auto">
                 <li class="nav-item">
                     <a href="/" class="nav-link {{if eq .Title "Today"}}active{{end}}">Today</a>
@@ -43,10 +50,25 @@
                 <li class="nav-item">
                     <a href="/ingredients" class="nav-link {{if eq .Title "Ingredients"}}active{{end}}">Ingredients</a>
                 </li>
-                <li class="nav-item">
-                    <a href="/profile" class="nav-link {{if eq .Title "Profile"}}active{{end}}">Profile</a>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        {{.User.Username}}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="/profile">Profile</a></li>
+                        {{if .User.IsAdmin}}
+                        <li><a class="dropdown-item" href="/admin/users">&#128274; Users</a></li>
+                        {{end}}
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <form action="/logout" method="POST">
+                                <button type="submit" class="dropdown-item">Logout</button>
+                            </form>
+                        </li>
+                    </ul>
                 </li>
             </ul>
+            {{end}}
         </div>
     </nav>
     <main class="container container-narrow py-3">

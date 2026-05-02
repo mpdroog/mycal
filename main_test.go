@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"io"
 	"net/http"
@@ -19,11 +20,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
+	"github.com/mpdroog/mycal/models"
 )
 
 var testServer *httptest.Server
+var testUser *models.User
 
 func TestMain(m *testing.M) {
 	// Create temp directory for test database
@@ -47,10 +51,20 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	// Setup templates and server
-	tmpls, err := loadTestTemplates()
+	// Create a test user for authentication
+	testUser, err = auth.CreateUser("testuser", "testpass123", true)
 	if err != nil {
 		panic(err)
+	}
+
+	// Create profile for test user
+	_, _ = db.DB.Exec(`INSERT INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
+		VALUES (?, 2000, 150, 250, 65)`, testUser.ID)
+
+	// Setup templates and server
+	tmpls, loadErr := loadTestTemplates()
+	if loadErr != nil {
+		panic(loadErr)
 	}
 
 	r := setupRouter(tmpls)
@@ -198,6 +212,26 @@ func loadTestTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	login, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "login.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	setup, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "setup.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	adminUsers, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_users.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	adminUserForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_user_form.html"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
 		Dashboard:      dashboard,
 		Ingredients:    ingredients,
@@ -206,17 +240,33 @@ func loadTestTemplates() (*Templates, error) {
 		FoodForm:       foodForm,
 		EntryForm:      entryForm,
 		Profile:        profile,
+		Login:          login,
+		Setup:          setup,
+		AdminUsers:     adminUsers,
+		AdminUserForm:  adminUserForm,
 	}, nil
 }
 
 func setupRouter(tmpls *Templates) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
+	// Inject test user into context for all requests
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), auth.UserContextKey, testUser)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 
 	fs := http.FileServer(http.Dir("static"))
 	r.Handle("/static/*", http.StripPrefix("/static/", fs))
 
+	// Public routes (no auth required)
+	r.Get("/login", handlers.Login(tmpls.Login))
+	r.Post("/login", handlers.Login(tmpls.Login))
+
 	r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+	r.Post("/logout", handlers.Logout)
 
 	// Ingredients
 	r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
@@ -226,7 +276,6 @@ func setupRouter(tmpls *Templates) *chi.Mux {
 	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
 	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
 	r.Get("/ingredients/search", handlers.SearchIngredients)
-	r.Post("/ingredients/import", handlers.ImportIngredients)
 
 	// Foods
 	r.Get("/foods", handlers.ListFoods(tmpls.Foods))
@@ -246,6 +295,15 @@ func setupRouter(tmpls *Templates) *chi.Mux {
 	// Profile
 	r.Get("/profile", handlers.Profile(tmpls.Profile))
 	r.Post("/profile", handlers.Profile(tmpls.Profile))
+
+	// Admin routes
+	r.Get("/admin/users", handlers.AdminUsers(tmpls.AdminUsers))
+	r.Get("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+	r.Post("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+	r.Get("/admin/users/{id}/edit", handlers.AdminEditUser(tmpls.AdminUserForm))
+	r.Post("/admin/users/{id}/edit", handlers.AdminEditUser(tmpls.AdminUserForm))
+	r.Post("/admin/users/{id}/delete", handlers.AdminDeleteUser)
+	r.Post("/admin/ingredients/import", handlers.ImportIngredients)
 
 	return r
 }
@@ -503,5 +561,553 @@ func TestProfileUpdate(t *testing.T) {
 
 	if !strings.Contains(body, "2500") {
 		t.Error("Profile: updated calories goal not found")
+	}
+}
+
+// ============================================================================
+// Authentication Tests
+// ============================================================================
+
+// TestLoginPageLoads verifies the login page renders correctly
+func TestLoginPageLoads(t *testing.T) {
+	client := testServer.Client()
+	status, body := doGet(t, client, testServer.URL+"/login")
+
+	if status != http.StatusOK {
+		t.Errorf("Login page: expected 200, got %d", status)
+	}
+
+	if !strings.Contains(body, "Login") {
+		t.Error("Login page: missing title")
+	}
+
+	if !strings.Contains(body, `<form`) {
+		t.Error("Login page: missing form element")
+	}
+
+	if !strings.Contains(body, "username") {
+		t.Error("Login page: missing username field")
+	}
+
+	if !strings.Contains(body, "password") {
+		t.Error("Login page: missing password field")
+	}
+}
+
+// TestLoginWithValidCredentials verifies login works with correct credentials
+func TestLoginWithValidCredentials(t *testing.T) {
+	// Create a separate server without auto-injected user for this test
+	tmpDir, err := os.MkdirTemp("", "mycal-login-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	defer os.RemoveAll(tmpDir)
+
+	// We need to test against the main test database since it has our user
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	// Create a test user for login testing
+	loginUser, err := auth.CreateUser("logintest", "loginpass123", false)
+	if err != nil {
+		t.Fatalf("Failed to create login test user: %v", err)
+	}
+
+	_ = loginUser // Used for creating the user
+
+	form := url.Values{}
+	form.Set("username", "logintest")
+	form.Set("password", "loginpass123")
+
+	status := doPost(t, client, testServer.URL+"/login", form)
+
+	// Login should redirect to dashboard on success
+	if status != http.StatusSeeOther {
+		t.Errorf("Login: expected 303 redirect, got %d", status)
+	}
+}
+
+// TestLoginWithInvalidCredentials verifies login fails with wrong password
+func TestLoginWithInvalidCredentials(t *testing.T) {
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	form := url.Values{}
+	form.Set("username", "testuser")
+	form.Set("password", "wrongpassword")
+
+	ctx := t.Context()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, testServer.URL+"/login", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed POST /login: %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read body: %v", err)
+	}
+
+	body := string(bodyBytes)
+
+	// Should show login page with error, not redirect
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Invalid login: expected 200 with error, got %d", resp.StatusCode)
+	}
+
+	if !strings.Contains(body, "Invalid") || !strings.Contains(body, "password") {
+		t.Error("Login page should show error message for invalid credentials")
+	}
+}
+
+// TestLoginWithNonExistentUser verifies login fails for unknown user
+func TestLoginWithNonExistentUser(t *testing.T) {
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	form := url.Values{}
+	form.Set("username", "nonexistentuser12345")
+	form.Set("password", "anypassword")
+
+	ctx := t.Context()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, testServer.URL+"/login", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed POST /login: %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Non-existent user login: expected 200 with error, got %d", resp.StatusCode)
+	}
+}
+
+// TestLogout verifies logout clears session
+func TestLogout(t *testing.T) {
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	status := doPost(t, client, testServer.URL+"/logout", url.Values{})
+
+	// Logout should redirect to login page
+	if status != http.StatusSeeOther {
+		t.Errorf("Logout: expected 303 redirect, got %d", status)
+	}
+}
+
+// ============================================================================
+// Admin Route Tests
+// ============================================================================
+
+// TestAdminUsersPageLoads verifies admin users page works for admin
+func TestAdminUsersPageLoads(t *testing.T) {
+	client := testServer.Client()
+	status, body := doGet(t, client, testServer.URL+"/admin/users")
+
+	if status != http.StatusOK {
+		t.Errorf("Admin users: expected 200, got %d", status)
+	}
+
+	if !strings.Contains(body, "Users") {
+		t.Error("Admin users: missing title")
+	}
+}
+
+// TestAdminCreateUserFormLoads verifies admin create user form loads
+func TestAdminCreateUserFormLoads(t *testing.T) {
+	client := testServer.Client()
+	status, body := doGet(t, client, testServer.URL+"/admin/users/new")
+
+	if status != http.StatusOK {
+		t.Errorf("Admin create user: expected 200, got %d", status)
+	}
+
+	if !strings.Contains(body, "User") {
+		t.Error("Admin create user: missing title")
+	}
+
+	if !strings.Contains(body, `<form`) {
+		t.Error("Admin create user: missing form")
+	}
+}
+
+// TestAdminCreateUser verifies admin can create new users
+func TestAdminCreateUser(t *testing.T) {
+	client := testServer.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	form := url.Values{}
+	form.Set("username", "newadmincreated")
+	form.Set("password", "newpassword123")
+	form.Set("is_admin", "false")
+
+	status := doPost(t, client, testServer.URL+"/admin/users/new", form)
+
+	if status != http.StatusSeeOther {
+		t.Errorf("Admin create user: expected 303 redirect, got %d", status)
+	}
+
+	// Verify user appears in list
+	_, body := doGet(t, client, testServer.URL+"/admin/users")
+
+	if !strings.Contains(body, "newadmincreated") {
+		t.Error("Admin users: newly created user not found")
+	}
+}
+
+// ============================================================================
+// Route Protection Tests (Unauthenticated Access)
+// ============================================================================
+
+// setupUnauthenticatedServer creates a test server without auto-injected user
+// to test route protection behavior
+func setupUnauthenticatedServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	tmpls, err := loadTestTemplates()
+	if err != nil {
+		t.Fatalf("Failed to load templates: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
+
+	// Use real auth middleware (no injected user)
+	r.Use(auth.RequireSetup)
+
+	// Static files (no auth required)
+	fs := http.FileServer(http.Dir("static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+
+	// Public routes
+	r.Get("/login", handlers.Login(tmpls.Login))
+	r.Post("/login", handlers.Login(tmpls.Login))
+	r.Get("/setup", handlers.Setup(tmpls.Setup))
+	r.Post("/setup", handlers.Setup(tmpls.Setup))
+
+	// Protected routes
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAuth)
+
+		r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+		r.Post("/logout", handlers.Logout)
+
+		r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
+		r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+		r.Post("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+		r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+
+		r.Get("/foods", handlers.ListFoods(tmpls.Foods))
+		r.Get("/foods/new", handlers.CreateFood(tmpls.FoodForm))
+
+		r.Get("/entries/{id}/edit", handlers.GetEntry(tmpls.EntryForm))
+
+		r.Get("/profile", handlers.Profile(tmpls.Profile))
+		r.Post("/profile", handlers.Profile(tmpls.Profile))
+
+		// Admin routes
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAdmin)
+			r.Get("/admin/users", handlers.AdminUsers(tmpls.AdminUsers))
+			r.Get("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Post("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Post("/admin/ingredients/import", handlers.ImportIngredients)
+		})
+	})
+
+	return httptest.NewServer(r)
+}
+
+// setupNonAdminServer creates a test server with a non-admin user to test admin protection
+func setupNonAdminServer(t *testing.T) (*httptest.Server, *models.User) {
+	t.Helper()
+
+	// Create non-admin user
+	nonAdminUser, err := auth.CreateUser("nonadmin_"+strconv.FormatInt(time.Now().UnixNano(), 36), "password123", false)
+	if err != nil {
+		t.Fatalf("Failed to create non-admin user: %v", err)
+	}
+
+	tmpls, err := loadTestTemplates()
+	if err != nil {
+		t.Fatalf("Failed to load templates: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Use(middleware.Recoverer)
+
+	// Inject non-admin user into context
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), auth.UserContextKey, nonAdminUser)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+
+	// Protected routes
+	r.Group(func(r chi.Router) {
+		r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+		r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
+		r.Get("/foods", handlers.ListFoods(tmpls.Foods))
+		r.Get("/profile", handlers.Profile(tmpls.Profile))
+
+		// Admin routes
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAdmin)
+			r.Get("/admin/users", handlers.AdminUsers(tmpls.AdminUsers))
+			r.Get("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Post("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Post("/admin/ingredients/import", handlers.ImportIngredients)
+		})
+	})
+
+	return httptest.NewServer(r), nonAdminUser
+}
+
+// TestProtectedRoutesRedirectToLogin verifies that protected routes redirect
+// unauthenticated users to the login page
+func TestProtectedRoutesRedirectToLogin(t *testing.T) {
+	server := setupUnauthenticatedServer(t)
+	defer server.Close()
+
+	client := server.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	protectedRoutes := []string{
+		"/",
+		"/ingredients",
+		"/ingredients/new",
+		"/foods",
+		"/foods/new",
+		"/profile",
+		"/admin/users",
+		"/admin/users/new",
+	}
+
+	for _, route := range protectedRoutes {
+		t.Run(route, func(t *testing.T) {
+			ctx := t.Context()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+route, http.NoBody)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed GET %s: %v", route, err)
+			}
+
+			defer resp.Body.Close()
+
+			// Should redirect to /login
+			if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusFound {
+				t.Errorf("Route %s: expected redirect (302/303), got %d", route, resp.StatusCode)
+
+				return
+			}
+
+			location := resp.Header.Get("Location")
+			if !strings.Contains(location, "/login") {
+				t.Errorf("Route %s: expected redirect to /login, got %s", route, location)
+			}
+		})
+	}
+}
+
+// TestPublicRoutesAccessible verifies that public routes are accessible without auth
+func TestPublicRoutesAccessible(t *testing.T) {
+	server := setupUnauthenticatedServer(t)
+	defer server.Close()
+
+	client := server.Client()
+
+	publicRoutes := []string{
+		"/login",
+	}
+
+	for _, route := range publicRoutes {
+		t.Run(route, func(t *testing.T) {
+			ctx := t.Context()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+route, http.NoBody)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed GET %s: %v", route, err)
+			}
+
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Route %s: expected 200, got %d", route, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestStaticFilesAccessibleWithoutAuth verifies static files don't require auth
+func TestStaticFilesAccessibleWithoutAuth(t *testing.T) {
+	server := setupUnauthenticatedServer(t)
+	defer server.Close()
+
+	client := server.Client()
+	ctx := t.Context()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/static/css/style.css", http.NoBody)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed GET /static/css/style.css: %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Static files should be accessible without auth, got %d", resp.StatusCode)
+	}
+}
+
+// ============================================================================
+// Admin Permission Tests (Non-Admin Access)
+// ============================================================================
+
+// TestAdminRoutesRequireAdmin verifies admin routes return 403 for non-admin users
+func TestAdminRoutesRequireAdmin(t *testing.T) {
+	server, _ := setupNonAdminServer(t)
+	defer server.Close()
+
+	client := server.Client()
+
+	adminRoutes := []string{
+		"/admin/users",
+		"/admin/users/new",
+	}
+
+	for _, route := range adminRoutes {
+		t.Run(route, func(t *testing.T) {
+			ctx := t.Context()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+route, http.NoBody)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed GET %s: %v", route, err)
+			}
+
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("Route %s: expected 403 Forbidden for non-admin, got %d", route, resp.StatusCode)
+			}
+		})
+	}
+}
+
+// TestAdminImportRouteRequiresAdmin verifies admin import route returns 403 for non-admin
+func TestAdminImportRouteRequiresAdmin(t *testing.T) {
+	server, _ := setupNonAdminServer(t)
+	defer server.Close()
+
+	client := server.Client()
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	ctx := t.Context()
+
+	// POST to admin import endpoint
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/admin/ingredients/import", strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "multipart/form-data")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed POST /admin/ingredients/import: %v", err)
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Admin import: expected 403 Forbidden for non-admin, got %d", resp.StatusCode)
+	}
+}
+
+// TestNonAdminCanAccessRegularRoutes verifies non-admin users can access regular routes
+func TestNonAdminCanAccessRegularRoutes(t *testing.T) {
+	server, _ := setupNonAdminServer(t)
+	defer server.Close()
+
+	client := server.Client()
+
+	regularRoutes := []string{
+		"/",
+		"/ingredients",
+		"/foods",
+		"/profile",
+	}
+
+	for _, route := range regularRoutes {
+		t.Run(route, func(t *testing.T) {
+			ctx := t.Context()
+
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+route, http.NoBody)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed GET %s: %v", route, err)
+			}
+
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("Route %s: non-admin should access regular route, got %d", route, resp.StatusCode)
+			}
+		})
 	}
 }

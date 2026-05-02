@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
 )
@@ -130,6 +131,10 @@ type Templates struct {
 	FoodForm       *template.Template
 	EntryForm      *template.Template
 	Profile        *template.Template
+	Login          *template.Template
+	Setup          *template.Template
+	AdminUsers     *template.Template
+	AdminUserForm  *template.Template
 }
 
 func loadTemplates() (*Templates, error) {
@@ -170,6 +175,26 @@ func loadTemplates() (*Templates, error) {
 		return nil, err
 	}
 
+	login, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "login.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	setup, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "setup.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	adminUsers, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_users.html"))
+	if err != nil {
+		return nil, err
+	}
+
+	adminUserForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_user_form.html"))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Templates{
 		Dashboard:      dashboard,
 		Ingredients:    ingredients,
@@ -178,6 +203,10 @@ func loadTemplates() (*Templates, error) {
 		FoodForm:       foodForm,
 		EntryForm:      entryForm,
 		Profile:        profile,
+		Login:          login,
+		Setup:          setup,
+		AdminUsers:     adminUsers,
+		AdminUserForm:  adminUserForm,
 	}, nil
 }
 
@@ -209,45 +238,69 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(compressionLevel))
 
-	// Static files
+	// Static files (no auth required)
 	fs := http.FileServer(http.Dir("static"))
 	r.Handle("/static/*", http.StripPrefix("/static/", fs))
 
-	// Routes
-	r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+	// Public routes (no auth required)
+	r.Get("/login", handlers.Login(tmpls.Login))
+	r.Post("/login", handlers.Login(tmpls.Login))
+	r.Get("/setup", handlers.Setup(tmpls.Setup))
+	r.Post("/setup", handlers.Setup(tmpls.Setup))
 
-	// Ingredients (base nutritional items)
-	r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
-	r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
-	r.Post("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
-	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
-	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
-	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
-	r.Post("/ingredients/{id}/restore", handlers.RestoreIngredient)
-	r.Get("/ingredients/search", handlers.SearchIngredients)
-	r.Post("/ingredients/import", handlers.ImportIngredients)
+	// Protected routes (require auth)
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireSetup)
+		r.Use(auth.RequireAuth)
 
-	// Foods (combinations of ingredients)
-	r.Get("/foods", handlers.ListFoods(tmpls.Foods))
-	r.Get("/foods/new", handlers.CreateFood(tmpls.FoodForm))
-	r.Post("/foods/new", handlers.CreateFood(tmpls.FoodForm))
-	r.Get("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
-	r.Post("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
-	r.Post("/foods/{id}/delete", handlers.DeleteFood)
-	r.Post("/foods/{id}/restore", handlers.RestoreFood)
-	r.Get("/foods/search", handlers.SearchFoods)
+		// Dashboard
+		r.Get("/", handlers.Dashboard(tmpls.Dashboard))
+		r.Post("/logout", handlers.Logout)
 
-	// Entries
-	r.Post("/entries", handlers.CreateEntry)
-	r.Get("/entries/{id}/edit", handlers.GetEntry(tmpls.EntryForm))
-	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
-	r.Post("/entries/{id}/servings", handlers.UpdateEntryServings)
-	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
-	r.Post("/entries/{id}/restore", handlers.RestoreEntry)
+		// Ingredients (base nutritional items) - shared across all users
+		r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
+		r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+		r.Post("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))
+		r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+		r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
+		r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+		r.Post("/ingredients/{id}/restore", handlers.RestoreIngredient)
+		r.Get("/ingredients/search", handlers.SearchIngredients)
 
-	// Profile
-	r.Get("/profile", handlers.Profile(tmpls.Profile))
-	r.Post("/profile", handlers.Profile(tmpls.Profile))
+		// Foods (combinations of ingredients) - shared across all users
+		r.Get("/foods", handlers.ListFoods(tmpls.Foods))
+		r.Get("/foods/new", handlers.CreateFood(tmpls.FoodForm))
+		r.Post("/foods/new", handlers.CreateFood(tmpls.FoodForm))
+		r.Get("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
+		r.Post("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
+		r.Post("/foods/{id}/delete", handlers.DeleteFood)
+		r.Post("/foods/{id}/restore", handlers.RestoreFood)
+		r.Get("/foods/search", handlers.SearchFoods)
+
+		// Entries - per-user
+		r.Post("/entries", handlers.CreateEntry)
+		r.Get("/entries/{id}/edit", handlers.GetEntry(tmpls.EntryForm))
+		r.Post("/entries/{id}/edit", handlers.UpdateEntry)
+		r.Post("/entries/{id}/servings", handlers.UpdateEntryServings)
+		r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+		r.Post("/entries/{id}/restore", handlers.RestoreEntry)
+
+		// Profile - per-user
+		r.Get("/profile", handlers.Profile(tmpls.Profile))
+		r.Post("/profile", handlers.Profile(tmpls.Profile))
+
+		// Admin routes
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAdmin)
+			r.Get("/admin/users", handlers.AdminUsers(tmpls.AdminUsers))
+			r.Get("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Post("/admin/users/new", handlers.AdminCreateUser(tmpls.AdminUserForm))
+			r.Get("/admin/users/{id}/edit", handlers.AdminEditUser(tmpls.AdminUserForm))
+			r.Post("/admin/users/{id}/edit", handlers.AdminEditUser(tmpls.AdminUserForm))
+			r.Post("/admin/users/{id}/delete", handlers.AdminDeleteUser)
+			r.Post("/admin/ingredients/import", handlers.ImportIngredients)
+		})
+	})
 
 	log.Printf("Starting MyCal on %s", *addr)
 

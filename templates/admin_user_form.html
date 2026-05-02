@@ -1,0 +1,75 @@
+{{define "content"}}
+<div class="mb-3">
+    <a href="/admin/users" class="text-secondary text-decoration-none">&larr; Back to Users</a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">{{.Title}}</h5>
+    </div>
+    <div class="card-body">
+        {{if .Error}}
+        <div class="alert alert-danger">{{.Error}}</div>
+        {{end}}
+
+        <form method="POST">
+            {{if not .EditUser}}
+            <div class="mb-3">
+                <label for="username" class="form-label">Username</label>
+                <input type="text" id="username" name="username" class="form-control" required>
+            </div>
+            {{else}}
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <input type="text" class="form-control" value="{{.EditUser.Username}}" disabled>
+            </div>
+            {{end}}
+            <div class="mb-3">
+                <label for="password" class="form-label">Password{{if .EditUser}} (leave blank to keep current){{end}}</label>
+                <input type="password" id="password" name="password" class="form-control" {{if not .EditUser}}required{{end}} minlength="8">
+                <div class="form-text">Minimum 8 characters</div>
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" id="is_admin" name="is_admin" class="form-check-input" {{if and .EditUser .EditUser.IsAdmin}}checked{{end}}>
+                <label for="is_admin" class="form-check-label">Administrator</label>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-between">
+                <div>
+                    {{if .EditUser}}
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">Delete User</button>
+                    {{end}}
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="/admin/users" class="btn btn-outline-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-accent">{{if .EditUser}}Update{{else}}Create{{end}} User</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{{if .EditUser}}
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Delete User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong>{{.EditUser.Username}}</strong>?</p>
+                <p class="text-secondary small mb-0">This will permanently delete all their entries and profile data.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form action="/admin/users/{{.EditUser.ID}}/delete" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+{{end}}

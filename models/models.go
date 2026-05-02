@@ -49,6 +49,7 @@ type Food struct {
 
 type Entry struct {
 	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
 	FoodID    int64     `json:"food_id"`
 	Date      string    `json:"date"` // YYYY-MM-DD
 	Meal      string    `json:"meal"` // breakfast, lunch, dinner, snack
@@ -87,8 +88,18 @@ type DaySummary struct {
 
 // Profile contains user's daily nutritional goals.
 type Profile struct {
+	UserID       int64   `json:"user_id"`
 	CaloriesGoal int     `json:"calories_goal"`
 	ProteinGoal  float64 `json:"protein_goal"`
 	CarbsGoal    float64 `json:"carbs_goal"`
 	FatGoal      float64 `json:"fat_goal"`
+}
+
+// User represents a registered user.
+type User struct {
+	ID           int64     `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	IsAdmin      bool      `json:"is_admin"`
+	CreatedAt    time.Time `json:"created_at"`
 }

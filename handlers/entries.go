@@ -10,12 +10,15 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/models"
 )
 
 func Dashboard(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		date := r.URL.Query().Get("date")
 		if date == "" {
 			date = time.Now().Format("2006-01-02")
@@ -30,7 +33,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 			}
 		}
 
-		summary := getDaySummary(date)
+		summary := getDaySummary(date, user.ID)
 
 		// Get all foods for the dropdown
 		foods, err := getAllFoods()
@@ -49,7 +52,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		// Get profile for goals
-		profile, err := GetProfile()
+		profile, err := GetProfileForUser(user.ID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -64,6 +67,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 			"Ingredients": ingredients,
 			"Meals":       []string{"breakfast", "lunch", "dinner", "snack"},
 			"Profile":     profile,
+			"User":        user,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -73,6 +77,8 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 }
 
 func CreateEntry(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 
@@ -164,9 +170,9 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = db.DB.Exec(`
-		INSERT INTO entries (food_id, date, meal, servings, notes)
-		VALUES (?, ?, ?, ?, ?)
-	`, foodID, date, r.FormValue("meal"), servings, r.FormValue("notes"))
+		INSERT INTO entries (food_id, date, meal, servings, notes, user_id)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, foodID, date, r.FormValue("meal"), servings, r.FormValue("notes"), user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -177,6 +183,8 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteEntry(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
@@ -184,11 +192,13 @@ func DeleteEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the date before soft-deleting
+	// Get the date before soft-deleting (verify ownership)
 	var dateRaw string
 
-	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&dateRaw); scanErr != nil {
-		log.Printf("DeleteEntry: failed to get date for entry %d: %v", id, scanErr)
+	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ? AND user_id = ?", id, user.ID).Scan(&dateRaw); scanErr != nil {
+		http.Error(w, "entry not found", http.StatusNotFound)
+
+		return
 	}
 
 	// Parse and format date (SQLite may return various formats)
@@ -204,7 +214,7 @@ func DeleteEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Soft delete: set deleted_at timestamp
-	_, err = db.DB.Exec("UPDATE entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	_, err = db.DB.Exec("UPDATE entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", id, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -215,6 +225,8 @@ func DeleteEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func RestoreEntry(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
@@ -222,15 +234,17 @@ func RestoreEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the date for redirect
+	// Get the date for redirect (verify ownership)
 	var dateRaw string
 
-	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&dateRaw); scanErr != nil {
-		log.Printf("RestoreEntry: failed to get date for entry %d: %v", id, scanErr)
+	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ? AND user_id = ?", id, user.ID).Scan(&dateRaw); scanErr != nil {
+		http.Error(w, "entry not found", http.StatusNotFound)
+
+		return
 	}
 
 	// Clear deleted_at to restore
-	_, err = db.DB.Exec("UPDATE entries SET deleted_at = NULL WHERE id = ?", id)
+	_, err = db.DB.Exec("UPDATE entries SET deleted_at = NULL WHERE id = ? AND user_id = ?", id, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -252,7 +266,7 @@ func RestoreEntry(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/?date="+date, http.StatusSeeOther)
 }
 
-func getDaySummary(date string) models.DaySummary {
+func getDaySummary(date string, userID int64) models.DaySummary {
 	summary := models.DaySummary{Date: date}
 
 	// Single optimized query with JOINs to avoid N+1 queries
@@ -267,10 +281,10 @@ func getDaySummary(date string) models.DaySummary {
 		JOIN foods f ON e.food_id = f.id
 		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
 		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
-		WHERE e.date = ? AND e.deleted_at IS NULL
+		WHERE e.date = ? AND e.deleted_at IS NULL AND e.user_id = ?
 		GROUP BY e.id, e.food_id, e.date, e.meal, e.servings, e.notes, f.id, f.name
 		ORDER BY e.created_at ASC
-	`, date)
+	`, date, userID)
 	if err != nil {
 		log.Printf("getDaySummary: query failed: %v", err)
 
@@ -309,6 +323,8 @@ func getDaySummary(date string) models.DaySummary {
 
 func GetEntry(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", http.StatusBadRequest)
@@ -324,8 +340,8 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 			       f.id, f.name
 			FROM entries e
 			JOIN foods f ON e.food_id = f.id
-			WHERE e.id = ?
-		`, id).Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
+			WHERE e.id = ? AND e.user_id = ?
+		`, id, user.ID).Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
 			&f.ID, &f.Name)
 		if errors.Is(err, models.ErrNotFound) {
 			http.NotFound(w, r)
@@ -353,6 +369,7 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 			"Entry": e,
 			"Foods": foods,
 			"Meals": []string{"breakfast", "lunch", "dinner", "snack"},
+			"User":  user,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -362,6 +379,8 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 }
 
 func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
@@ -390,9 +409,16 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 		servings = 0.25
 	}
 
-	_, err = db.DB.Exec(`UPDATE entries SET servings = ? WHERE id = ?`, servings, id)
+	result, err := db.DB.Exec(`UPDATE entries SET servings = ? WHERE id = ? AND user_id = ?`, servings, id, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		http.Error(w, "entry not found", http.StatusNotFound)
 
 		return
 	}
@@ -401,6 +427,8 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateEntry(w http.ResponseWriter, r *http.Request) {
+	user := auth.GetUserFromContext(r.Context())
+
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
@@ -432,12 +460,19 @@ func UpdateEntry(w http.ResponseWriter, r *http.Request) {
 		servings = 1
 	}
 
-	_, err = db.DB.Exec(`
+	result, err := db.DB.Exec(`
 		UPDATE entries SET food_id = ?, meal = ?, servings = ?, notes = ?
-		WHERE id = ?
-	`, foodID, r.FormValue("meal"), servings, r.FormValue("notes"), id)
+		WHERE id = ? AND user_id = ?
+	`, foodID, r.FormValue("meal"), servings, r.FormValue("notes"), id, user.ID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		http.Error(w, "entry not found", http.StatusNotFound)
 
 		return
 	}
@@ -445,7 +480,7 @@ func UpdateEntry(w http.ResponseWriter, r *http.Request) {
 	// Get date for redirect
 	var date string
 
-	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&date); scanErr != nil {
+	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ? AND user_id = ?", id, user.ID).Scan(&date); scanErr != nil {
 		log.Printf("UpdateEntry: failed to get date for entry %d: %v", id, scanErr)
 	}
 

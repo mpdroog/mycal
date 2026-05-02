@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/models"
 )
@@ -99,6 +100,8 @@ func getAllFoods() ([]models.Food, error) {
 
 func ListFoods(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		foods, err := getAllFoods()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -109,6 +112,7 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 		data := map[string]interface{}{
 			"Title": "Foods",
 			"Foods": foods,
+			"User":  user,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -119,6 +123,8 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 
 func CreateFood(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		ingredients, err := GetAllIngredients()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -131,6 +137,7 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 				"Title":       "Add Food",
 				"Food":        models.Food{},
 				"Ingredients": ingredients,
+				"User":        user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -203,6 +210,8 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 
 func EditFood(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", http.StatusBadRequest)
@@ -235,6 +244,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 				"Title":       "Edit Food",
 				"Food":        food,
 				"Ingredients": ingredients,
+				"User":        user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {

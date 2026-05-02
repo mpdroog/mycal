@@ -6,20 +6,27 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/models"
 )
 
-// GetProfile returns the user's profile settings.
-func GetProfile() (*models.Profile, error) {
+// GetProfileForUser returns the user's profile settings.
+func GetProfileForUser(userID int64) (*models.Profile, error) {
 	var p models.Profile
 
 	err := db.DB.QueryRow(`
 		SELECT calories_goal, protein_goal, carbs_goal, fat_goal
-		FROM profile WHERE id = 1
-	`).Scan(&p.CaloriesGoal, &p.ProteinGoal, &p.CarbsGoal, &p.FatGoal)
+		FROM profile WHERE user_id = ?
+	`, userID).Scan(&p.CaloriesGoal, &p.ProteinGoal, &p.CarbsGoal, &p.FatGoal)
 	if err != nil {
-		return nil, err
+		// Return default profile if not found
+		return &models.Profile{
+			CaloriesGoal: 2000,
+			ProteinGoal:  150,
+			CarbsGoal:    250,
+			FatGoal:      65,
+		}, nil
 	}
 
 	return &p, nil
@@ -27,8 +34,10 @@ func GetProfile() (*models.Profile, error) {
 
 func Profile(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.GetUserFromContext(r.Context())
+
 		if r.Method == http.MethodGet {
-			profile, err := GetProfile()
+			profile, err := GetProfileForUser(user.ID)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -38,6 +47,7 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 			data := map[string]interface{}{
 				"Title":   "Profile",
 				"Profile": profile,
+				"User":    user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -82,10 +92,16 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		// Upsert profile for user
 		_, err = db.DB.Exec(`
-			UPDATE profile SET calories_goal = ?, protein_goal = ?, carbs_goal = ?, fat_goal = ?
-			WHERE id = 1
-		`, calories, protein, carbs, fat)
+			INSERT INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(user_id) DO UPDATE SET
+				calories_goal = excluded.calories_goal,
+				protein_goal = excluded.protein_goal,
+				carbs_goal = excluded.carbs_goal,
+				fat_goal = excluded.fat_goal
+		`, user.ID, calories, protein, carbs, fat)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 

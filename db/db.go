@@ -82,9 +82,6 @@ func migrate() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date)`,
-		`CREATE INDEX IF NOT EXISTS idx_foods_deleted_at ON foods(deleted_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_ingredients_deleted_at ON ingredients(deleted_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_entries_deleted_at ON entries(deleted_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_food_ingredients_ingredient ON food_ingredients(ingredient_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_food ON entries(food_id)`,
 		`CREATE TABLE IF NOT EXISTS meal_templates (
@@ -99,16 +96,23 @@ func migrate() error {
 			template_id INTEGER REFERENCES meal_templates(id) ON DELETE CASCADE
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_planned_meals_date ON planned_meals(date)`,
-		// Profile/settings table (single row for user preferences)
-		`CREATE TABLE IF NOT EXISTS profile (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			calories_goal INTEGER NOT NULL DEFAULT 2000,
-			protein_goal REAL NOT NULL DEFAULT 150,
-			carbs_goal REAL NOT NULL DEFAULT 250,
-			fat_goal REAL NOT NULL DEFAULT 65
+		// Users table for authentication
+		`CREATE TABLE IF NOT EXISTS users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT NOT NULL UNIQUE,
+			password_hash TEXT NOT NULL,
+			is_admin INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		// Insert default profile if not exists
-		`INSERT OR IGNORE INTO profile (id, calories_goal, protein_goal, carbs_goal, fat_goal) VALUES (1, 2000, 150, 250, 65)`,
+		// Sessions table for login state
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			expires_at DATETIME NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
 	}
 
 	for _, m := range migrations {
@@ -122,11 +126,40 @@ func migrate() error {
 		`ALTER TABLE entries ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
 		`ALTER TABLE ingredients ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
 		`ALTER TABLE foods ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_foods_deleted_at ON foods(deleted_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_ingredients_deleted_at ON ingredients(deleted_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_entries_deleted_at ON entries(deleted_at)`,
+		`ALTER TABLE entries ADD COLUMN user_id INTEGER REFERENCES users(id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id)`,
 	}
 
 	for _, m := range safeMigrations {
 		// Ignore errors - these are expected if column already exists
 		_, _ = DB.Exec(m)
+	}
+
+	// Migrate profile table to support multiple users
+	// Check if profile table has user_id column
+	var hasUserID int
+	err := DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('profile') WHERE name = 'user_id'`).Scan(&hasUserID)
+	if err == nil && hasUserID == 0 {
+		// Need to migrate profile table - create new structure
+		_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS profile_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+			calories_goal INTEGER NOT NULL DEFAULT 2000,
+			protein_goal REAL NOT NULL DEFAULT 150,
+			carbs_goal REAL NOT NULL DEFAULT 250,
+			fat_goal REAL NOT NULL DEFAULT 65
+		)`)
+
+		// Copy existing profile data (will be assigned to first user later)
+		_, _ = DB.Exec(`INSERT INTO profile_new (calories_goal, protein_goal, carbs_goal, fat_goal)
+			SELECT calories_goal, protein_goal, carbs_goal, fat_goal FROM profile WHERE id = 1`)
+
+		// Drop old table and rename
+		_, _ = DB.Exec(`DROP TABLE IF EXISTS profile`)
+		_, _ = DB.Exec(`ALTER TABLE profile_new RENAME TO profile`)
 	}
 
 	return nil

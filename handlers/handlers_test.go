@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"context"
 	"html/template"
 	"log"
 	"mime/multipart"
@@ -19,13 +20,16 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
+	"github.com/mpdroog/mycal/models"
 )
 
 var (
 	testTemplates *TestTemplates
 	testRouter    *chi.Mux
+	testUser      *models.User
 )
 
 type TestTemplates struct {
@@ -57,6 +61,16 @@ func TestMain(m *testing.M) {
 			log.Printf("Error closing test database: %v", closeErr)
 		}
 	}()
+
+	// Create a test user for authentication
+	testUser, err = auth.CreateUser("testuser", "testpass123", true)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create profile for test user
+	_, _ = db.DB.Exec(`INSERT INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
+		VALUES (?, 2000, 150, 250, 65)`, testUser.ID)
 
 	// Load templates
 	testTemplates, err = loadTestTemplates()
@@ -222,6 +236,14 @@ func loadTestTemplates() (*TestTemplates, error) {
 
 func setupTestRouter() *chi.Mux {
 	r := chi.NewRouter()
+
+	// Inject test user into context for all requests
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), auth.UserContextKey, testUser)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 
 	r.Get("/", handlers.Dashboard(testTemplates.Dashboard))
 
@@ -862,12 +884,12 @@ func TestDeleteEntryDoesNotAffectOtherEntries(t *testing.T) {
 	}
 
 	// Create two entries with this food
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-01', 'breakfast', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-01-01', 'breakfast', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Could not create entry 1: %v", err)
 	}
 
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-01', 'lunch', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-01-01', 'lunch', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Could not create entry 2: %v", err)
 	}
@@ -979,7 +1001,7 @@ func TestCannotDeleteFoodWithEntries(t *testing.T) {
 	}
 
 	// Create an entry using this food
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-01-02', 'dinner', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-01-02', 'dinner', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Could not create entry: %v", err)
 	}
@@ -1349,7 +1371,7 @@ func TestServingsUpdateWithMultipartForm(t *testing.T) {
 		t.Fatalf("Link ingredient: %v", err)
 	}
 
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-03-17', 'lunch', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-03-17', 'lunch', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Create entry: %v", err)
 	}
@@ -1414,7 +1436,7 @@ func TestEntryUndoRestore(t *testing.T) {
 	}
 
 	// Create entry
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-05-01', 'breakfast', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-05-01', 'breakfast', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Create entry: %v", err)
 	}
@@ -1531,7 +1553,7 @@ func TestDeleteEntryDateFormatNormalization(t *testing.T) {
 	}
 
 	// Create entry with a specific date
-	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-06-15', 'lunch', 1)`, foodID)
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, '2024-06-15', 'lunch', 1, ?)`, foodID, testUser.ID)
 	if err != nil {
 		t.Fatalf("Create entry: %v", err)
 	}
