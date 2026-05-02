@@ -86,7 +86,7 @@
     <div class="card-body">
         <h6 class="card-title d-flex justify-content-between align-items-center">
             Add Entry
-            <input type="date" id="datePicker" value="{{.Date}}" onchange="location.href='/?date='+this.value" class="form-control form-control-sm w-auto d-none">
+            <input type="date" id="datePicker" value="{{.Date}}" class="form-control form-control-sm w-auto d-none">
         </h6>
         <form action="/entries" method="POST" id="addEntryForm">
             <input type="hidden" name="date" value="{{.Date}}">

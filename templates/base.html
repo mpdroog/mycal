@@ -16,24 +16,6 @@
     <link rel="stylesheet" href="/static/css/bootstrap.min.css">
     <link rel="stylesheet" href="/static/css/style.v{{version}}.css">
     <script src="/static/js/fuse.min.js"></script>
-    <script>
-    // Early error handler - captures errors before Bootstrap loads
-    window._pendingErrors = [];
-    window.onerror = function(message, source, lineno, colno, error) {
-        const details = [
-            'Error: ' + message,
-            'Source: ' + source,
-            'Line: ' + lineno + ', Column: ' + colno,
-            error && error.stack ? '\nStack:\n' + error.stack : ''
-        ].join('\n');
-        window._pendingErrors.push({ message: 'A JavaScript error occurred.', details: details });
-        return false;
-    };
-    window.onunhandledrejection = function(event) {
-        const details = event.reason ? (event.reason.stack || event.reason.toString()) : 'Unknown promise rejection';
-        window._pendingErrors.push({ message: 'An async operation failed.', details: details });
-    };
-    </script>
 </head>
 <body>
     <nav class="navbar navbar-expand navbar-dark sticky-top bg-accent">
@@ -92,82 +74,14 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-accent" onclick="location.reload()">Reload Page</button>
+                    <button type="button" class="btn btn-accent" id="reloadPageBtn">Reload Page</button>
                 </div>
             </div>
         </div>
     </div>
 
     <script src="/static/js/bootstrap.bundle.min.js"></script>
-    <script>
-    // Global error handling - now Bootstrap is loaded
-    (function() {
-        const errorModal = new bootstrap.Modal(document.getElementById('errorModal'));
-        const errorMessage = document.getElementById('errorMessage');
-        const errorDetails = document.getElementById('errorDetails');
-
-        // Show error modal
-        window.showError = function(message, details) {
-            errorMessage.textContent = message || 'An unexpected error occurred.';
-            errorDetails.textContent = details || 'No additional details available.';
-            errorModal.show();
-        };
-
-        // Show any errors that occurred before Bootstrap loaded
-        if (window._pendingErrors && window._pendingErrors.length > 0) {
-            const err = window._pendingErrors[0];
-            showError(err.message, err.details);
-        }
-
-        // Replace early error handlers with full versions
-        window.onerror = function(message, source, lineno, colno, error) {
-            const details = [
-                'Error: ' + message,
-                'Source: ' + source,
-                'Line: ' + lineno + ', Column: ' + colno,
-                error && error.stack ? '\nStack:\n' + error.stack : ''
-            ].join('\n');
-
-            showError('A JavaScript error occurred.', details);
-            return false;
-        };
-
-        window.onunhandledrejection = function(event) {
-            const details = event.reason ? (event.reason.stack || event.reason.toString()) : 'Unknown promise rejection';
-            showError('An async operation failed.', details);
-        };
-
-        // Override global fetch to add error handling
-        const originalFetch = window.fetch;
-        window.fetch = async function(url, options = {}) {
-            try {
-                const response = await originalFetch(url, options);
-
-                if (!response.ok) {
-                    const text = await response.clone().text();
-                    const details = [
-                        'URL: ' + url,
-                        'Status: ' + response.status + ' ' + response.statusText,
-                        'Response: ' + text
-                    ].join('\n');
-
-                    showError('Request failed: ' + response.statusText, details);
-                }
-
-                return response;
-            } catch (err) {
-                const details = [
-                    'URL: ' + url,
-                    'Error: ' + err.message,
-                    err.stack ? '\nStack:\n' + err.stack : ''
-                ].join('\n');
-
-                showError('Network error: Could not reach server.', details);
-                throw err;
-            }
-        };
-    })();
-    </script>
+    <script src="/static/js/global.v{{version}}.js"></script>
 
     <!-- Undo Toast -->
     <div class="toast-container position-fixed bottom-0 end-0 p-3">
@@ -181,51 +95,6 @@
             </div>
         </div>
     </div>
-    <script>
-    // Toast functionality for undo
-    (function() {
-        var params = new URLSearchParams(window.location.search);
-        var deleted = params.get('deleted');
-        var id = params.get('id');
-
-        if (deleted && id) {
-            var toast = document.getElementById('undo-toast');
-            var toastMessage = document.getElementById('toast-message');
-            var undoForm = document.getElementById('undo-form');
-
-            if (toast && toastMessage && undoForm) {
-                // Set message based on entity type
-                var entityNames = {
-                    'entry': 'Entry',
-                    'ingredient': 'Ingredient',
-                    'food': 'Food'
-                };
-                toastMessage.textContent = (entityNames[deleted] || 'Item') + ' deleted';
-
-                // Set restore endpoint
-                var endpoints = {
-                    'entry': '/entries/' + id + '/restore',
-                    'ingredient': '/ingredients/' + id + '/restore',
-                    'food': '/foods/' + id + '/restore'
-                };
-                undoForm.action = endpoints[deleted] || '#';
-
-                // Show toast
-                var bsToast = new bootstrap.Toast(toast);
-                bsToast.show();
-
-                // Clean URL without reload
-                params.delete('deleted');
-                params.delete('id');
-                var cleanUrl = window.location.pathname;
-                if (params.toString()) {
-                    cleanUrl += '?' + params.toString();
-                }
-                window.history.replaceState({}, '', cleanUrl);
-            }
-        }
-    })();
-    </script>
 </body>
 </html>
 {{end}}

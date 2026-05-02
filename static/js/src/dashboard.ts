@@ -228,6 +228,14 @@ interface PrevTotals {
         });
     }
 
+    // Date picker navigation
+    const datePicker = document.getElementById("datePicker") as HTMLInputElement | null;
+    if (datePicker) {
+        datePicker.addEventListener("change", function(): void {
+            location.href = "/?date=" + this.value;
+        });
+    }
+
     // Toggle and servings functionality (requires entries)
     const entriesList = document.getElementById("entriesList");
     if (!entriesList) return;
