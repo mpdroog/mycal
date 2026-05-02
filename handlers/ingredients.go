@@ -108,13 +108,13 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&totalCount); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		rows, err := db.DB.Query(listQuery, listArgs...)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -127,7 +127,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 
 			err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.ServingType, &i.CreatedAt)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -136,7 +136,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := rows.Err(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -170,7 +170,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 		}
 	}
 }
@@ -187,7 +187,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -195,7 +195,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 
 		form, err := parseIngredientForm(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -205,7 +205,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, form.ServingType)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -228,7 +228,7 @@ func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *h
 	}
 
 	if queryErr != nil {
-		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
+		httpError(w, queryErr, http.StatusInternalServerError)
 
 		return
 	}
@@ -240,7 +240,7 @@ func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *h
 	}
 
 	if tmplErr := tmpl.ExecuteTemplate(w, "base", data); tmplErr != nil {
-		http.Error(w, tmplErr.Error(), http.StatusInternalServerError)
+		httpError(w, tmplErr, http.StatusInternalServerError)
 	}
 }
 
@@ -263,7 +263,7 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 
 		form, err := parseIngredientForm(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -273,7 +273,7 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 			WHERE id = ?
 		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, form.ServingType, id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -299,7 +299,7 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 		WHERE fi.ingredient_id = ? AND f.deleted_at IS NULL
 	`, id).Scan(&usageCount)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -313,7 +313,7 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 	// Soft delete: set deleted_at timestamp
 	_, err = db.DB.Exec("UPDATE ingredients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -332,7 +332,7 @@ func RestoreIngredient(w http.ResponseWriter, r *http.Request) {
 	// Clear deleted_at to restore
 	_, err = db.DB.Exec("UPDATE ingredients SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -348,7 +348,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 		FROM ingredients WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 10
 	`, q)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -378,7 +378,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := rows.Err(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 	}
 }
 
@@ -432,7 +432,7 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 	// Read header
 	header, err := reader.Read()
 	if err != nil {
-		http.Error(w, "Invalid CSV: "+err.Error(), http.StatusBadRequest)
+		httpError(w, fmt.Errorf("invalid CSV header: %w", err), http.StatusBadRequest)
 
 		return
 	}

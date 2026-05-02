@@ -1797,3 +1797,75 @@ func TestDashboardDateNormalization(t *testing.T) {
 		t.Error("Dashboard should display normalized date 2024-07-20")
 	}
 }
+
+func TestSetupBlockedWhenUsersExist(t *testing.T) {
+	// This test verifies that /setup is blocked when users already exist
+	// The test database already has a user created in TestMain
+
+	// Load setup template
+	templatesDir := filepath.Join("..", "templates")
+	base := filepath.Join(templatesDir, "base.html")
+
+	funcMap := template.FuncMap{
+		"version": func() string { return "test" },
+	}
+
+	setupTmpl, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "setup.html"))
+	if err != nil {
+		t.Fatalf("Failed to load setup template: %v", err)
+	}
+
+	setupHandler := handlers.Setup(setupTmpl)
+
+	// Test GET /setup - should redirect to /login
+	t.Run("GET redirects to login", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/setup", http.NoBody)
+		rec := httptest.NewRecorder()
+
+		setupHandler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("GET /setup with existing users: expected 303 redirect, got %d", rec.Code)
+		}
+
+		location := rec.Header().Get("Location")
+		if location != "/login" {
+			t.Errorf("GET /setup should redirect to /login, got %s", location)
+		}
+	})
+
+	// Test POST /setup - should redirect to /login (not create another admin)
+	t.Run("POST redirects to login", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("username", "attacker")
+		form.Set("password", "attackerpass123")
+		form.Set("confirm_password", "attackerpass123")
+
+		req := httptest.NewRequest(http.MethodPost, "/setup", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		rec := httptest.NewRecorder()
+
+		setupHandler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("POST /setup with existing users: expected 303 redirect, got %d", rec.Code)
+		}
+
+		location := rec.Header().Get("Location")
+		if location != "/login" {
+			t.Errorf("POST /setup should redirect to /login, got %s", location)
+		}
+
+		// Verify no new user was created
+		var count int
+		err := db.DB.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", "attacker").Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to check for attacker user: %v", err)
+		}
+
+		if count != 0 {
+			t.Error("POST /setup should NOT create a new user when users already exist")
+		}
+	})
+}

@@ -19,6 +19,10 @@ const (
 	CookieName      = "session"
 )
 
+// SecureCookie controls whether session cookies require HTTPS.
+// Defaults to true for production safety.
+var SecureCookie = true
+
 var (
 	ErrInvalidCredentials = errors.New("invalid username or password")
 	ErrUserExists         = errors.New("username already exists")
@@ -179,7 +183,7 @@ func SetSessionCookie(w http.ResponseWriter, sessionID string) {
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // Set true in production with HTTPS
+		Secure:   SecureCookie,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(SessionDuration.Seconds()),
 	})

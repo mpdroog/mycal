@@ -14,13 +14,24 @@ import (
 // Setup handles first-run admin creation.
 func Setup(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Block access if setup already completed
+		hasUsers, err := auth.HasUsers()
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		if hasUsers {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return
+		}
+
 		if r.Method == http.MethodGet {
 			data := map[string]interface{}{
 				"Title": "Setup",
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -28,7 +39,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 
 		// POST - create first admin
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -44,7 +55,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -57,7 +68,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -70,7 +81,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -85,7 +96,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -120,7 +131,7 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -128,7 +139,7 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 
 		// POST - authenticate
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -144,7 +155,7 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -178,7 +189,7 @@ func AdminUsers(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := auth.GetAllUsers()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -192,7 +203,7 @@ func AdminUsers(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 		}
 	}
 }
@@ -209,7 +220,7 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -217,7 +228,7 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 
 		// POST
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -234,7 +245,7 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -248,7 +259,7 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -263,7 +274,7 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -304,7 +315,7 @@ func AdminEditUser(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -312,7 +323,7 @@ func AdminEditUser(tmpl *template.Template) http.HandlerFunc {
 
 		// POST
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -331,14 +342,14 @@ func AdminEditUser(tmpl *template.Template) http.HandlerFunc {
 				}
 
 				if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
+					httpError(w, err, http.StatusInternalServerError)
 				}
 
 				return
 			}
 
 			if err := auth.UpdateUserPassword(id, password); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -346,7 +357,7 @@ func AdminEditUser(tmpl *template.Template) http.HandlerFunc {
 
 		// Update admin status
 		if err := auth.UpdateUserAdmin(id, isAdmin); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -376,7 +387,7 @@ func AdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	// Prevent deleting the last admin
 	isAdmin, err := auth.IsAdmin(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -384,7 +395,7 @@ func AdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if isAdmin {
 		adminCount, err := auth.CountAdmins()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -397,7 +408,7 @@ func AdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := auth.DeleteUser(id); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}

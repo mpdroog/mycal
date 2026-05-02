@@ -119,7 +119,7 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 			countArgs = append(countArgs, "%"+query+"%")
 		}
 		if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&totalCount); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -144,7 +144,7 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 
 		rows, err := db.DB.Query(listQuery, listArgs...)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
@@ -153,13 +153,13 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 		for rows.Next() {
 			var f models.Food
 			if err := rows.Scan(&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.CreatedAt, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 				return
 			}
 			foods = append(foods, f)
 		}
 		if err := rows.Err(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -183,7 +183,7 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 		}
 	}
 }
@@ -194,7 +194,7 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 
 		ingredients, err := GetAllIngredients()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -208,14 +208,14 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
 		}
 
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -246,14 +246,14 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 		// Insert food
 		result, err := db.DB.Exec(`INSERT INTO foods (name) VALUES (?)`, name)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
 
 		foodID, err := result.LastInsertId()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -265,7 +265,7 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 				VALUES (?, ?, ?)
 			`, foodID, fi.IngredientID, fi.AmountGrams)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -288,7 +288,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 
 		ingredients, err := GetAllIngredients()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -302,7 +302,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -315,14 +315,14 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
 		}
 
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -353,7 +353,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 		// Update food name
 		_, err = db.DB.Exec(`UPDATE foods SET name = ? WHERE id = ?`, name, id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -361,7 +361,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 		// Delete old ingredients and insert new ones
 		_, err = db.DB.Exec(`DELETE FROM food_ingredients WHERE food_id = ?`, id)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -372,7 +372,7 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 				VALUES (?, ?, ?)
 			`, id, fi.IngredientID, fi.AmountGrams)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -395,7 +395,7 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 
 	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE food_id = ? AND deleted_at IS NULL", id).Scan(&entryCount)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -409,7 +409,7 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 	// Soft delete: set deleted_at timestamp
 	_, err = db.DB.Exec("UPDATE foods SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -428,7 +428,7 @@ func RestoreFood(w http.ResponseWriter, r *http.Request) {
 	// Clear deleted_at to restore
 	_, err = db.DB.Exec("UPDATE foods SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -454,7 +454,7 @@ func SearchFoods(w http.ResponseWriter, r *http.Request) {
 		LIMIT 10
 	`, q)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}

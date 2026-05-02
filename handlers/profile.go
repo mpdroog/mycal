@@ -39,7 +39,7 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 		if r.Method == http.MethodGet {
 			profile, err := GetProfileForUser(user.ID)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -51,7 +51,7 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 			}
 
 			return
@@ -59,7 +59,7 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 
 		// POST - update profile
 		if err := r.ParseForm(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httpError(w, err, http.StatusBadRequest)
 
 			return
 		}
@@ -103,7 +103,7 @@ func Profile(tmpl *template.Template) http.HandlerFunc {
 				fat_goal = excluded.fat_goal
 		`, user.ID, calories, protein, carbs, fat)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}

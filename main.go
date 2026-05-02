@@ -227,7 +227,12 @@ func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
 	dataDir := flag.String("data", "./data", "Data directory for SQLite database")
 	verbose := flag.Bool("v", false, "Verbose logging")
+	insecure := flag.Bool("insecure", false, "Disable secure cookies (for local development without HTTPS)")
 	flag.Parse()
+
+	if *insecure {
+		auth.SecureCookie = false
+	}
 
 	// Initialize database
 	if err := db.Init(*dataDir); err != nil {
@@ -253,6 +258,7 @@ func main() {
 	}
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(compressionLevel))
+	r.Use(auth.CheckCSRF)
 
 	// Static files (no auth required)
 	// Strip version from paths like style.vdev.css → style.css for cache busting

@@ -38,7 +38,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		// Get all foods for the dropdown
 		foods, err := getAllFoods()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -46,7 +46,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		// Get all ingredients for the dropdown
 		ingredients, err := GetAllIngredients()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -54,7 +54,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		// Get profile for goals
 		profile, err := GetProfileForUser(user.ID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -71,7 +71,7 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 		}
 	}
 }
@@ -80,7 +80,7 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 	user := auth.GetUserFromContext(r.Context())
 
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		httpError(w, err, http.StatusBadRequest)
 
 		return
 	}
@@ -123,14 +123,14 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 			// Create a simple food from this ingredient (100g)
 			result, err := db.DB.Exec("INSERT INTO foods (name, serving_type, serving_size) VALUES (?, ?, ?)", ingredientName, ingredientServingType, ingredientServingSize)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
 
 			foodID, err = result.LastInsertId()
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -141,7 +141,7 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 				VALUES (?, ?, 100)
 			`, foodID, ingredientID)
 			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				httpError(w, err, http.StatusInternalServerError)
 
 				return
 			}
@@ -192,7 +192,7 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, foodID, date, r.FormValue("meal"), servings, r.FormValue("notes"), user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -234,7 +234,7 @@ func DeleteEntry(w http.ResponseWriter, r *http.Request) {
 	// Soft delete: set deleted_at timestamp
 	_, err = db.DB.Exec("UPDATE entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", id, user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -264,7 +264,7 @@ func RestoreEntry(w http.ResponseWriter, r *http.Request) {
 	// Clear deleted_at to restore
 	_, err = db.DB.Exec("UPDATE entries SET deleted_at = NULL WHERE id = ? AND user_id = ?", id, user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -368,7 +368,7 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -377,7 +377,7 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 
 		foods, err := getAllFoods()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -391,7 +391,7 @@ func GetEntry(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 		}
 	}
 }
@@ -410,7 +410,7 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		// Fall back to regular form parsing
 		if parseErr := r.ParseForm(); parseErr != nil {
-			http.Error(w, parseErr.Error(), http.StatusBadRequest)
+			httpError(w, parseErr, http.StatusBadRequest)
 
 			return
 		}
@@ -429,7 +429,7 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 
 	result, err := db.DB.Exec(`UPDATE entries SET servings = ? WHERE id = ? AND user_id = ?`, servings, id, user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
@@ -455,7 +455,7 @@ func UpdateEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if parseErr := r.ParseForm(); parseErr != nil {
-		http.Error(w, parseErr.Error(), http.StatusBadRequest)
+		httpError(w, parseErr, http.StatusBadRequest)
 
 		return
 	}
@@ -483,7 +483,7 @@ func UpdateEntry(w http.ResponseWriter, r *http.Request) {
 		WHERE id = ? AND user_id = ?
 	`, foodID, r.FormValue("meal"), servings, r.FormValue("notes"), id, user.ID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		httpError(w, err, http.StatusInternalServerError)
 
 		return
 	}
