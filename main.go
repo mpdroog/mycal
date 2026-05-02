@@ -223,6 +223,7 @@ func main() {
 	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
 	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(tmpls.IngredientForm))
 	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+	r.Post("/ingredients/{id}/restore", handlers.RestoreIngredient)
 	r.Get("/ingredients/search", handlers.SearchIngredients)
 	r.Post("/ingredients/import", handlers.ImportIngredients)
 
@@ -233,6 +234,7 @@ func main() {
 	r.Get("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
 	r.Post("/foods/{id}/edit", handlers.EditFood(tmpls.FoodForm))
 	r.Post("/foods/{id}/delete", handlers.DeleteFood)
+	r.Post("/foods/{id}/restore", handlers.RestoreFood)
 	r.Get("/foods/search", handlers.SearchFoods)
 
 	// Entries
@@ -241,6 +243,7 @@ func main() {
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
 	r.Post("/entries/{id}/servings", handlers.UpdateEntryServings)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+	r.Post("/entries/{id}/restore", handlers.RestoreEntry)
 
 	// Profile
 	r.Get("/profile", handlers.Profile(tmpls.Profile))

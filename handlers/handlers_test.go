@@ -232,6 +232,7 @@ func setupTestRouter() *chi.Mux {
 	r.Get("/ingredients/{id}/edit", handlers.EditIngredient(testTemplates.IngredientForm))
 	r.Post("/ingredients/{id}/edit", handlers.EditIngredient(testTemplates.IngredientForm))
 	r.Post("/ingredients/{id}/delete", handlers.DeleteIngredient)
+	r.Post("/ingredients/{id}/restore", handlers.RestoreIngredient)
 	r.Get("/ingredients/search", handlers.SearchIngredients)
 	r.Post("/ingredients/import", handlers.ImportIngredients)
 
@@ -242,6 +243,7 @@ func setupTestRouter() *chi.Mux {
 	r.Get("/foods/{id}/edit", handlers.EditFood(testTemplates.FoodForm))
 	r.Post("/foods/{id}/edit", handlers.EditFood(testTemplates.FoodForm))
 	r.Post("/foods/{id}/delete", handlers.DeleteFood)
+	r.Post("/foods/{id}/restore", handlers.RestoreFood)
 
 	// Entries
 	r.Post("/entries", handlers.CreateEntry)
@@ -249,6 +251,7 @@ func setupTestRouter() *chi.Mux {
 	r.Post("/entries/{id}/edit", handlers.UpdateEntry)
 	r.Post("/entries/{id}/servings", handlers.UpdateEntryServings)
 	r.Post("/entries/{id}/delete", handlers.DeleteEntry)
+	r.Post("/entries/{id}/restore", handlers.RestoreEntry)
 
 	// Profile
 	r.Get("/profile", handlers.Profile(testTemplates.Profile))
@@ -1381,5 +1384,205 @@ func TestServingsUpdateWithMultipartForm(t *testing.T) {
 
 	if savedServings != 5.0 {
 		t.Errorf("Servings not saved with multipart form: expected 5.0, got %.2f", savedServings)
+	}
+}
+
+func TestEntryUndoRestore(t *testing.T) {
+	// Create test ingredient
+	_, err := db.DB.Exec(`INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size) VALUES ('Undo Test Ing', 100, 10, 10, 5, '100g')`)
+	if err != nil {
+		t.Fatalf("Create ingredient: %v", err)
+	}
+
+	var ingID int64
+
+	db.DB.QueryRow("SELECT id FROM ingredients WHERE name = 'Undo Test Ing'").Scan(&ingID)
+
+	// Create test food
+	_, err = db.DB.Exec(`INSERT INTO foods (name) VALUES ('Undo Test Food')`)
+	if err != nil {
+		t.Fatalf("Create food: %v", err)
+	}
+
+	var foodID int64
+
+	db.DB.QueryRow("SELECT id FROM foods WHERE name = 'Undo Test Food'").Scan(&foodID)
+
+	_, err = db.DB.Exec(`INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams) VALUES (?, ?, 100)`, foodID, ingID)
+	if err != nil {
+		t.Fatalf("Link ingredient: %v", err)
+	}
+
+	// Create entry
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-05-01', 'breakfast', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Create entry: %v", err)
+	}
+
+	var entryID int64
+
+	db.DB.QueryRow("SELECT id FROM entries WHERE food_id = ? AND date = '2024-05-01'", foodID).Scan(&entryID)
+
+	// Delete the entry
+	req := httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/delete", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("Delete entry: expected 303, got %d", rec.Code)
+	}
+
+	// Verify redirect URL has correct date format and undo params
+	location := rec.Header().Get("Location")
+	if !strings.Contains(location, "date=2024-05-01") {
+		t.Errorf("Delete redirect should contain date=2024-05-01, got: %s", location)
+	}
+
+	if !strings.Contains(location, "deleted=entry") {
+		t.Errorf("Delete redirect should contain deleted=entry, got: %s", location)
+	}
+
+	if !strings.Contains(location, "id="+strconv.FormatInt(entryID, 10)) {
+		t.Errorf("Delete redirect should contain id=%d, got: %s", entryID, location)
+	}
+
+	// Verify entry is soft-deleted (deleted_at is set)
+	var deletedAt *string
+
+	err = db.DB.QueryRow("SELECT deleted_at FROM entries WHERE id = ?", entryID).Scan(&deletedAt)
+	if err != nil {
+		t.Fatalf("Query entry: %v", err)
+	}
+
+	if deletedAt == nil {
+		t.Error("Entry should have deleted_at set after delete")
+	}
+
+	// Verify entry doesn't appear in dashboard query (filtered by deleted_at IS NULL)
+	var visibleCount int
+
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE id = ? AND deleted_at IS NULL", entryID).Scan(&visibleCount)
+	if err != nil {
+		t.Fatalf("Count visible entries: %v", err)
+	}
+
+	if visibleCount != 0 {
+		t.Error("Deleted entry should not be visible (deleted_at should filter it out)")
+	}
+
+	// Restore the entry (undo)
+	req = httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/restore", http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("Restore entry: expected 303, got %d", rec.Code)
+	}
+
+	// Verify entry is restored (deleted_at is NULL)
+	err = db.DB.QueryRow("SELECT deleted_at FROM entries WHERE id = ?", entryID).Scan(&deletedAt)
+	if err != nil {
+		t.Fatalf("Query entry after restore: %v", err)
+	}
+
+	if deletedAt != nil {
+		t.Error("Entry should have deleted_at = NULL after restore")
+	}
+
+	// Verify entry appears again
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE id = ? AND deleted_at IS NULL", entryID).Scan(&visibleCount)
+	if err != nil {
+		t.Fatalf("Count visible entries after restore: %v", err)
+	}
+
+	if visibleCount != 1 {
+		t.Error("Restored entry should be visible again")
+	}
+}
+
+func TestDeleteEntryDateFormatNormalization(t *testing.T) {
+	// This test verifies that even if the database stores dates in timestamp format,
+	// the redirect URL will have a properly formatted date (YYYY-MM-DD)
+
+	// Create test data with a date that might be stored as timestamp
+	_, err := db.DB.Exec(`INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size) VALUES ('Date Format Test Ing', 100, 10, 10, 5, '100g')`)
+	if err != nil {
+		t.Fatalf("Create ingredient: %v", err)
+	}
+
+	var ingID int64
+
+	db.DB.QueryRow("SELECT id FROM ingredients WHERE name = 'Date Format Test Ing'").Scan(&ingID)
+
+	_, err = db.DB.Exec(`INSERT INTO foods (name) VALUES ('Date Format Test Food')`)
+	if err != nil {
+		t.Fatalf("Create food: %v", err)
+	}
+
+	var foodID int64
+
+	db.DB.QueryRow("SELECT id FROM foods WHERE name = 'Date Format Test Food'").Scan(&foodID)
+
+	_, err = db.DB.Exec(`INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams) VALUES (?, ?, 100)`, foodID, ingID)
+	if err != nil {
+		t.Fatalf("Link ingredient: %v", err)
+	}
+
+	// Create entry with a specific date
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings) VALUES (?, '2024-06-15', 'lunch', 1)`, foodID)
+	if err != nil {
+		t.Fatalf("Create entry: %v", err)
+	}
+
+	var entryID int64
+
+	db.DB.QueryRow("SELECT id FROM entries WHERE food_id = ? AND meal = 'lunch'", foodID).Scan(&entryID)
+
+	// Delete the entry
+	req := httptest.NewRequest(http.MethodPost, "/entries/"+strconv.FormatInt(entryID, 10)+"/delete", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	// Check that the redirect URL has a properly formatted date
+	location := rec.Header().Get("Location")
+
+	// The date should be in YYYY-MM-DD format, not contain 'T' (timestamp format)
+	if strings.Contains(location, "T") {
+		t.Errorf("Redirect URL should not contain timestamp format, got: %s", location)
+	}
+
+	// Should contain the proper date format
+	if !strings.Contains(location, "date=2024-06-15") {
+		t.Errorf("Redirect URL should contain date=2024-06-15, got: %s", location)
+	}
+}
+
+func TestDashboardDateNormalization(t *testing.T) {
+	// Test that the dashboard normalizes timestamp-format dates in URL
+
+	// Request dashboard with a timestamp-format date
+	req := httptest.NewRequest(http.MethodGet, "/?date=2024-07-20T00:00:00Z", http.NoBody)
+	rec := httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Dashboard with timestamp date: expected 200, got %d", rec.Code)
+	}
+
+	// The response body should show the normalized date (not the timestamp)
+	body := rec.Body.String()
+
+	// Should show the proper date format in the page, not the timestamp
+	if strings.Contains(body, "T00:00:00Z") {
+		t.Error("Dashboard should normalize timestamp dates, but found timestamp in response")
+	}
+
+	// Should contain the normalized date
+	if !strings.Contains(body, "2024-07-20") {
+		t.Error("Dashboard should display normalized date 2024-07-20")
 	}
 }

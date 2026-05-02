@@ -146,6 +146,64 @@
         };
     })();
     </script>
+
+    <!-- Undo Toast -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="undo-toast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="true" data-bs-delay="8000">
+            <div class="toast-body d-flex align-items-center justify-content-between gap-3">
+                <span id="toast-message">Item deleted</span>
+                <form id="undo-form" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-sm btn-outline-light">Undo</button>
+                </form>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+    <script>
+    // Toast functionality for undo
+    (function() {
+        var params = new URLSearchParams(window.location.search);
+        var deleted = params.get('deleted');
+        var id = params.get('id');
+
+        if (deleted && id) {
+            var toast = document.getElementById('undo-toast');
+            var toastMessage = document.getElementById('toast-message');
+            var undoForm = document.getElementById('undo-form');
+
+            if (toast && toastMessage && undoForm) {
+                // Set message based on entity type
+                var entityNames = {
+                    'entry': 'Entry',
+                    'ingredient': 'Ingredient',
+                    'food': 'Food'
+                };
+                toastMessage.textContent = (entityNames[deleted] || 'Item') + ' deleted';
+
+                // Set restore endpoint
+                var endpoints = {
+                    'entry': '/entries/' + id + '/restore',
+                    'ingredient': '/ingredients/' + id + '/restore',
+                    'food': '/foods/' + id + '/restore'
+                };
+                undoForm.action = endpoints[deleted] || '#';
+
+                // Show toast
+                var bsToast = new bootstrap.Toast(toast);
+                bsToast.show();
+
+                // Clean URL without reload
+                params.delete('deleted');
+                params.delete('id');
+                var cleanUrl = window.location.pathname;
+                if (params.toString()) {
+                    cleanUrl += '?' + params.toString();
+                }
+                window.history.replaceState({}, '', cleanUrl);
+            }
+        }
+    })();
+    </script>
 </body>
 </html>
 {{end}}

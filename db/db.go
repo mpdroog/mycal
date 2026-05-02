@@ -112,5 +112,17 @@ func migrate() error {
 		}
 	}
 
+	// Safe migrations that may fail if already applied (e.g., ADD COLUMN)
+	safeMigrations := []string{
+		`ALTER TABLE entries ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
+		`ALTER TABLE ingredients ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
+		`ALTER TABLE foods ADD COLUMN deleted_at DATETIME DEFAULT NULL`,
+	}
+
+	for _, m := range safeMigrations {
+		// Ignore errors - these are expected if column already exists
+		_, _ = DB.Exec(m)
+	}
+
 	return nil
 }

@@ -64,7 +64,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.DB.Query(`
 			SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
-			FROM ingredients ORDER BY name ASC
+			FROM ingredients WHERE deleted_at IS NULL ORDER BY name ASC
 		`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -223,10 +223,14 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this ingredient is used in any foods
+	// Check if this ingredient is used in any non-deleted foods
 	var usageCount int
 
-	err = db.DB.QueryRow("SELECT COUNT(*) FROM food_ingredients WHERE ingredient_id = ?", id).Scan(&usageCount)
+	err = db.DB.QueryRow(`
+		SELECT COUNT(*) FROM food_ingredients fi
+		JOIN foods f ON fi.food_id = f.id
+		WHERE fi.ingredient_id = ? AND f.deleted_at IS NULL
+	`, id).Scan(&usageCount)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -239,7 +243,27 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.DB.Exec("DELETE FROM ingredients WHERE id = ?", id)
+	// Soft delete: set deleted_at timestamp
+	_, err = db.DB.Exec("UPDATE ingredients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	http.Redirect(w, r, "/ingredients?deleted=ingredient&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+func RestoreIngredient(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+
+		return
+	}
+
+	// Clear deleted_at to restore
+	_, err = db.DB.Exec("UPDATE ingredients SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -254,7 +278,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := db.DB.Query(`
 		SELECT id, name, calories, protein, carbs, fat, serving_size
-		FROM ingredients WHERE name LIKE ? ORDER BY name LIMIT 10
+		FROM ingredients WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 10
 	`, q)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -293,7 +317,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 
 // GetAllIngredients returns all ingredients for use in other handlers.
 func GetAllIngredients() ([]models.Ingredient, error) {
-	rows, err := db.DB.Query(`SELECT id, name, calories, protein, carbs, fat, serving_size FROM ingredients ORDER BY name`)
+	rows, err := db.DB.Query(`SELECT id, name, calories, protein, carbs, fat, serving_size FROM ingredients WHERE deleted_at IS NULL ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}

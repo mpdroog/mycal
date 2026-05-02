@@ -63,7 +63,7 @@ func getFoodWithNutrition(foodID int64) (*models.Food, error) {
 
 // getAllFoods returns all foods with their calculated nutritional values.
 func getAllFoods() ([]models.Food, error) {
-	rows, err := db.DB.Query(`SELECT id, name FROM foods ORDER BY name`)
+	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE deleted_at IS NULL ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -309,10 +309,10 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if any entries reference this food
+	// Check if any non-deleted entries reference this food
 	var entryCount int
 
-	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE food_id = ?", id).Scan(&entryCount)
+	err = db.DB.QueryRow("SELECT COUNT(*) FROM entries WHERE food_id = ? AND deleted_at IS NULL", id).Scan(&entryCount)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -325,7 +325,27 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.DB.Exec("DELETE FROM foods WHERE id = ?", id)
+	// Soft delete: set deleted_at timestamp
+	_, err = db.DB.Exec("UPDATE foods SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	http.Redirect(w, r, "/foods?deleted=food&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+func RestoreFood(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+
+		return
+	}
+
+	// Clear deleted_at to restore
+	_, err = db.DB.Exec("UPDATE foods SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -338,7 +358,7 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 func SearchFoods(w http.ResponseWriter, r *http.Request) {
 	q := "%" + r.URL.Query().Get("q") + "%"
 
-	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE name LIKE ? ORDER BY name LIMIT 10`, q)
+	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 10`, q)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 

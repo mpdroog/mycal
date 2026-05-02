@@ -19,6 +19,15 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		date := r.URL.Query().Get("date")
 		if date == "" {
 			date = time.Now().Format("2006-01-02")
+		} else {
+			// Normalize date format (handle timestamps, etc.)
+			if t, err := time.Parse(time.RFC3339, date); err == nil {
+				date = t.Format("2006-01-02")
+			} else if t, err := time.Parse("2006-01-02T15:04:05Z", date); err == nil {
+				date = t.Format("2006-01-02")
+			} else if len(date) > 10 {
+				date = date[:10]
+			}
 		}
 
 		summary := getDaySummary(date)
@@ -175,22 +184,69 @@ func DeleteEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the date before deleting
-	var date string
+	// Get the date before soft-deleting
+	var dateRaw string
 
-	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&date); scanErr != nil {
+	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&dateRaw); scanErr != nil {
 		log.Printf("DeleteEntry: failed to get date for entry %d: %v", id, scanErr)
 	}
 
-	_, err = db.DB.Exec("DELETE FROM entries WHERE id = ?", id)
+	// Parse and format date (SQLite may return various formats)
+	date := time.Now().Format("2006-01-02")
+	if dateRaw != "" {
+		if t, parseErr := time.Parse(time.RFC3339, dateRaw); parseErr == nil {
+			date = t.Format("2006-01-02")
+		} else if t, parseErr := time.Parse("2006-01-02", dateRaw); parseErr == nil {
+			date = t.Format("2006-01-02")
+		} else if len(dateRaw) >= 10 {
+			date = dateRaw[:10]
+		}
+	}
+
+	// Soft delete: set deleted_at timestamp
+	_, err = db.DB.Exec("UPDATE entries SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
 		return
 	}
 
-	if date == "" {
-		date = time.Now().Format("2006-01-02")
+	http.Redirect(w, r, "/?date="+date+"&deleted=entry&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+func RestoreEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+
+		return
+	}
+
+	// Get the date for redirect
+	var dateRaw string
+
+	if scanErr := db.DB.QueryRow("SELECT date FROM entries WHERE id = ?", id).Scan(&dateRaw); scanErr != nil {
+		log.Printf("RestoreEntry: failed to get date for entry %d: %v", id, scanErr)
+	}
+
+	// Clear deleted_at to restore
+	_, err = db.DB.Exec("UPDATE entries SET deleted_at = NULL WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	// Parse and format date
+	date := time.Now().Format("2006-01-02")
+	if dateRaw != "" {
+		if t, parseErr := time.Parse(time.RFC3339, dateRaw); parseErr == nil {
+			date = t.Format("2006-01-02")
+		} else if t, parseErr := time.Parse("2006-01-02", dateRaw); parseErr == nil {
+			date = t.Format("2006-01-02")
+		} else if len(dateRaw) >= 10 {
+			date = dateRaw[:10]
+		}
 	}
 
 	http.Redirect(w, r, "/?date="+date, http.StatusSeeOther)
@@ -204,7 +260,7 @@ func getDaySummary(date string) models.DaySummary {
 		       f.id, f.name
 		FROM entries e
 		JOIN foods f ON e.food_id = f.id
-		WHERE e.date = ?
+		WHERE e.date = ? AND e.deleted_at IS NULL
 		ORDER BY e.created_at ASC
 	`, date)
 	if err != nil {
