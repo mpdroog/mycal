@@ -226,6 +226,7 @@ func loadTemplates() (*Templates, error) {
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
 	dataDir := flag.String("data", "./data", "Data directory for SQLite database")
+	verbose := flag.Bool("v", false, "Verbose logging")
 	flag.Parse()
 
 	// Initialize database
@@ -247,7 +248,9 @@ func main() {
 
 	// Setup router
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	if *verbose {
+		r.Use(middleware.Logger)
+	}
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(compressionLevel))
 
@@ -323,7 +326,10 @@ func main() {
 		})
 	})
 
-	log.Printf("Starting MyCal on %s", *addr)
+	if *verbose {
+		log.Printf("MyCal %s", Version)
+		log.Printf("  addr=%s data=%s", *addr, *dataDir)
+	}
 
 	// Create listener first so we can notify systemd when ready
 	listener, err := net.Listen("tcp", *addr)
