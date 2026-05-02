@@ -6,16 +6,17 @@
     "lint:js": "eslint 'static/js/src/**/*.ts'",
     "lint:css": "stylelint 'static/css/**/*.css' --ignore-pattern '*.min.css'",
     "typecheck": "tsc --noEmit",
-    "build": "tsc",
+    "build": "esbuild $(find static/js/src -name '*.ts' ! -name '*.d.ts') --outdir=static/js --minify --target=es2020",
     "lint": "npm run lint:js && npm run lint:css && npm run typecheck"
   },
   "devDependencies": {
-    "eslint": "^9.0.0",
     "@eslint/js": "^9.0.0",
+    "esbuild": "^0.28.0",
+    "eslint": "^9.0.0",
     "globals": "^16.0.0",
-    "typescript": "^5.0.0",
-    "typescript-eslint": "^8.0.0",
     "stylelint": "^16.0.0",
-    "stylelint-config-standard": "^36.0.0"
+    "stylelint-config-standard": "^36.0.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0"
   }
 }

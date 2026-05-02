@@ -131,6 +131,9 @@ func migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_entries_deleted_at ON entries(deleted_at)`,
 		`ALTER TABLE entries ADD COLUMN user_id INTEGER REFERENCES users(id)`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_user ON entries(user_id)`,
+		`ALTER TABLE ingredients ADD COLUMN serving_type TEXT NOT NULL DEFAULT 'weight'`,
+		`ALTER TABLE foods ADD COLUMN serving_type TEXT NOT NULL DEFAULT 'weight'`,
+		`ALTER TABLE foods ADD COLUMN serving_size TEXT NOT NULL DEFAULT '100g'`,
 	}
 
 	for _, m := range safeMigrations {

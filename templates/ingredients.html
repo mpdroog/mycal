@@ -13,6 +13,14 @@
     </div>
 </div>
 
+<form action="/ingredients" method="GET" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="q" class="form-control" placeholder="Search ingredients..." value="{{.Query}}">
+        <button type="submit" class="btn btn-outline-secondary">Search</button>
+        {{if .Query}}<a href="/ingredients" class="btn btn-outline-secondary">Clear</a>{{end}}
+    </div>
+</form>
+
 {{if .Imported}}
 <div class="alert alert-success alert-dismissible fade show" role="alert">
     Imported {{.Imported}} ingredients{{if .Skipped}}, skipped {{.Skipped}} (duplicates or errors){{end}}.
@@ -71,10 +79,33 @@
         {{end}}
     </ul>
 </div>
+
+{{if gt .TotalPages 1}}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        <li class="page-item{{if not .HasPrev}} disabled{{end}}">
+            <a class="page-link" href="/ingredients?page={{.PrevPage}}{{if .Query}}&q={{.Query}}{{end}}">&laquo;</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">{{.Page}} / {{.TotalPages}}</span>
+        </li>
+        <li class="page-item{{if not .HasNext}} disabled{{end}}">
+            <a class="page-link" href="/ingredients?page={{.NextPage}}{{if .Query}}&q={{.Query}}{{end}}">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+{{end}}
+
+<p class="text-center text-secondary small mt-2">{{.TotalCount}} ingredient{{if ne .TotalCount 1}}s{{end}}</p>
 {{else}}
 <div class="text-center py-5 text-secondary">
+    {{if .Query}}
+    <p>No ingredients found matching "{{.Query}}"</p>
+    <a href="/ingredients" class="btn btn-outline-secondary">Clear search</a>
+    {{else}}
     <p>No ingredients yet. Add your first ingredient to start building foods!</p>
     <a href="/ingredients/new" class="btn btn-accent">Add Ingredient</a>
+    {{end}}
 </div>
 {{end}}
 {{end}}

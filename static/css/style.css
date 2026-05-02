@@ -120,7 +120,11 @@
 
 /* Input widths */
 .servings-input-width {
-    width: 70px;
+    width: auto;
+}
+
+.servings-input-width .servings-input {
+    width: 4em;
 }
 
 .amount-input-width {

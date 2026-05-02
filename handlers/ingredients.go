@@ -24,6 +24,7 @@ type ingredientFormData struct {
 	Carbs       float64
 	Fat         float64
 	ServingSize string
+	ServingType string
 }
 
 func parseIngredientForm(r *http.Request) (ingredientFormData, error) {
@@ -51,24 +52,67 @@ func parseIngredientForm(r *http.Request) (ingredientFormData, error) {
 		return ingredientFormData{}, fmt.Errorf("invalid fat: %w", err)
 	}
 
+	servingType := r.FormValue("serving_type")
+	if servingType == "" {
+		servingType = "weight"
+	}
+
+	servingSize := r.FormValue("serving_size")
+	if servingType == "weight" {
+		servingSize = "100g"
+	}
+
 	return ingredientFormData{
 		Name:        r.FormValue("name"),
 		Calories:    calories,
 		Protein:     protein,
 		Carbs:       carbs,
 		Fat:         fat,
-		ServingSize: r.FormValue("serving_size"),
+		ServingSize: servingSize,
+		ServingType: servingType,
 	}, nil
 }
+
+const itemsPerPage = 20
 
 func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.GetUserFromContext(r.Context())
 
-		rows, err := db.DB.Query(`
-			SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
-			FROM ingredients WHERE deleted_at IS NULL ORDER BY name ASC
-		`)
+		// Get search and pagination params
+		query := r.URL.Query().Get("q")
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		offset := (page - 1) * itemsPerPage
+
+		// Build query with optional search
+		var totalCount int
+		var countQuery, listQuery string
+		var countArgs, listArgs []interface{}
+
+		if query != "" {
+			searchPattern := "%" + query + "%"
+			countQuery = `SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL AND name LIKE ?`
+			countArgs = []interface{}{searchPattern}
+			listQuery = `SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type, created_at
+				FROM ingredients WHERE deleted_at IS NULL AND name LIKE ? ORDER BY name ASC LIMIT ? OFFSET ?`
+			listArgs = []interface{}{searchPattern, itemsPerPage, offset}
+		} else {
+			countQuery = `SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL`
+			countArgs = nil
+			listQuery = `SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type, created_at
+				FROM ingredients WHERE deleted_at IS NULL ORDER BY name ASC LIMIT ? OFFSET ?`
+			listArgs = []interface{}{itemsPerPage, offset}
+		}
+
+		if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&totalCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rows, err := db.DB.Query(listQuery, listArgs...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -81,7 +125,7 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		for rows.Next() {
 			var i models.Ingredient
 
-			err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.CreatedAt)
+			err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.ServingType, &i.CreatedAt)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -97,10 +141,23 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		totalPages := (totalCount + itemsPerPage - 1) / itemsPerPage
+		if totalPages < 1 {
+			totalPages = 1
+		}
+
 		data := map[string]interface{}{
 			"Title":       "Ingredients",
 			"Ingredients": ingredients,
 			"User":        user,
+			"Query":       query,
+			"Page":        page,
+			"TotalPages":  totalPages,
+			"TotalCount":  totalCount,
+			"HasPrev":     page > 1,
+			"HasNext":     page < totalPages,
+			"PrevPage":    page - 1,
+			"NextPage":    page + 1,
 		}
 
 		// Pass import results if present
@@ -125,7 +182,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 		if r.Method == http.MethodGet {
 			data := map[string]interface{}{
 				"Title":      "Add Ingredient",
-				"Ingredient": models.Ingredient{ServingSize: "100g"},
+				"Ingredient": models.Ingredient{ServingSize: "100g", ServingType: "weight"},
 				"User":       user,
 			}
 
@@ -144,9 +201,9 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		_, err = db.DB.Exec(`
-			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize)
+			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size, serving_type)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, form.ServingType)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -161,9 +218,9 @@ func showEditIngredientForm(tmpl *template.Template, w http.ResponseWriter, r *h
 	var i models.Ingredient
 
 	queryErr := db.DB.QueryRow(`
-		SELECT id, name, calories, protein, carbs, fat, serving_size, created_at
+		SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type, created_at
 		FROM ingredients WHERE id = ?
-	`, id).Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.CreatedAt)
+	`, id).Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.ServingType, &i.CreatedAt)
 	if errors.Is(queryErr, models.ErrNotFound) {
 		http.NotFound(w, r)
 
@@ -212,9 +269,9 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		_, err = db.DB.Exec(`
-			UPDATE ingredients SET name = ?, calories = ?, protein = ?, carbs = ?, fat = ?, serving_size = ?
+			UPDATE ingredients SET name = ?, calories = ?, protein = ?, carbs = ?, fat = ?, serving_size = ?, serving_type = ?
 			WHERE id = ?
-		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, id)
+		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, form.ServingType, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -287,7 +344,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 	q := "%" + r.URL.Query().Get("q") + "%"
 
 	rows, err := db.DB.Query(`
-		SELECT id, name, calories, protein, carbs, fat, serving_size
+		SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type
 		FROM ingredients WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 10
 	`, q)
 	if err != nil {
@@ -302,15 +359,15 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var i models.Ingredient
 
-		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize); err != nil {
+		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.ServingType); err != nil {
 			log.Printf("SearchIngredients scan error: %v", err)
 
 			continue
 		}
 
 		option := fmt.Sprintf(
-			`<option value="%d" data-calories="%d" data-protein="%.1f" data-carbs="%.1f" data-fat="%.1f">%s (%d kcal/%s)</option>`,
-			i.ID, i.Calories, i.Protein, i.Carbs, i.Fat, i.Name, i.Calories, i.ServingSize,
+			`<option value="%d" data-calories="%d" data-protein="%.1f" data-carbs="%.1f" data-fat="%.1f" data-serving-type="%s" data-serving-size="%s">%s (%d kcal/%s)</option>`,
+			i.ID, i.Calories, i.Protein, i.Carbs, i.Fat, i.ServingType, i.ServingSize, i.Name, i.Calories, i.ServingSize,
 		)
 
 		if _, err := w.Write([]byte(option)); err != nil {
@@ -327,7 +384,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 
 // GetAllIngredients returns all ingredients for use in other handlers.
 func GetAllIngredients() ([]models.Ingredient, error) {
-	rows, err := db.DB.Query(`SELECT id, name, calories, protein, carbs, fat, serving_size FROM ingredients WHERE deleted_at IS NULL ORDER BY name`)
+	rows, err := db.DB.Query(`SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type FROM ingredients WHERE deleted_at IS NULL ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +395,7 @@ func GetAllIngredients() ([]models.Ingredient, error) {
 	for rows.Next() {
 		var i models.Ingredient
 
-		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize); err != nil {
+		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat, &i.ServingSize, &i.ServingType); err != nil {
 			return nil, err
 		}
 
@@ -451,8 +508,12 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 		}
 
 		servingSize := "100g"
+		servingType := "weight"
 		if idx, ok := colMap["serving_size"]; ok && idx < len(record) && record[idx] != "" {
 			servingSize = record[idx]
+		}
+		if idx, ok := colMap["serving_type"]; ok && idx < len(record) && record[idx] != "" {
+			servingType = record[idx]
 		}
 
 		// Check if ingredient already exists
@@ -468,9 +529,9 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 
 		// Insert new ingredient
 		_, insertErr := db.DB.Exec(`
-			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, name, calories, protein, carbs, fat, servingSize)
+			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size, serving_type)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, name, calories, protein, carbs, fat, servingSize, servingType)
 		if insertErr != nil {
 			log.Printf("ImportIngredients: error inserting %s: %v", name, insertErr)
 			skipped++

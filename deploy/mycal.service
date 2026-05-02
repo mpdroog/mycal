@@ -1,0 +1,71 @@
+[Unit]
+Description=MyCal - Calorie Tracker
+Documentation=https://github.com/mpdroog/mycal
+After=network.target
+
+[Service]
+Type=simple
+User=mycal
+Group=mycal
+WorkingDirectory=/opt/mycal
+ExecStart=/opt/mycal/mycal -addr 127.0.0.1:8080 -data /var/lib/mycal
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=HOME=/var/lib/mycal
+
+# Strict security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateUsers=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectProc=invisible
+ProtectClock=yes
+ProtectHostname=yes
+
+# Restrict capabilities (drop all)
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount @swap @reboot @raw-io @clock @cpu-emulation @debug @module @obsolete
+
+# Memory protection
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+# Network restrictions (only localhost needed for reverse proxy)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressAllow=localhost
+IPAddressDeny=any
+
+# Namespace restrictions
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+
+# File system restrictions
+ReadWritePaths=/var/lib/mycal
+ReadOnlyPaths=/opt/mycal
+InaccessiblePaths=/root /boot /sys/firmware
+
+# Ulimits
+LimitNOFILE=1024
+LimitNPROC=64
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mycal
+
+[Install]
+WantedBy=multi-user.target

@@ -10,9 +10,9 @@ all: lint lint-js lint-css typecheck test build
 build: build-js
 	CGO_ENABLED=$(CGO_ENABLED) go build -o $(BINARY) .
 
-# TypeScript build
+# TypeScript build (minified with esbuild)
 build-js:
-	npx tsc
+	npm run build
 
 run: build
 	./$(BINARY)

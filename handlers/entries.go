@@ -87,6 +87,9 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 
 	var foodID int64
 
+	// Track serving type for conversion
+	servingType := "weight"
+
 	// Check if ingredient_id is provided (quick add from ingredient)
 	if ingredientIDStr := r.FormValue("ingredient_id"); ingredientIDStr != "" {
 		ingredientID, err := strconv.ParseInt(ingredientIDStr, 10, 64)
@@ -96,15 +99,17 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Get ingredient name
-		var ingredientName string
+		// Get ingredient name, serving_type, and serving_size
+		var ingredientName, ingredientServingType, ingredientServingSize string
 
-		err = db.DB.QueryRow("SELECT name FROM ingredients WHERE id = ?", ingredientID).Scan(&ingredientName)
+		err = db.DB.QueryRow("SELECT name, serving_type, serving_size FROM ingredients WHERE id = ?", ingredientID).Scan(&ingredientName, &ingredientServingType, &ingredientServingSize)
 		if err != nil {
 			http.Error(w, "ingredient not found", http.StatusBadRequest)
 
 			return
 		}
+
+		servingType = ingredientServingType
 
 		// Check if a simple food already exists for this ingredient
 		err = db.DB.QueryRow(`
@@ -116,7 +121,7 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			// Create a simple food from this ingredient (100g)
-			result, err := db.DB.Exec("INSERT INTO foods (name) VALUES (?)", ingredientName)
+			result, err := db.DB.Exec("INSERT INTO foods (name, serving_type, serving_size) VALUES (?, ?, ?)", ingredientName, ingredientServingType, ingredientServingSize)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -153,15 +158,28 @@ func CreateEntry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	servings, err := strconv.ParseFloat(r.FormValue("servings"), 64)
+	servingsInput, err := strconv.ParseFloat(r.FormValue("servings"), 64)
 	if err != nil {
 		http.Error(w, "invalid servings value", http.StatusBadRequest)
 
 		return
 	}
 
-	if servings <= 0 {
-		servings = 1
+	if servingsInput <= 0 {
+		servingsInput = 100 // default to 100g for weight, 1 for unit
+		if servingType == "unit" {
+			servingsInput = 1
+		}
+	}
+
+	// Convert input to servings based on serving type
+	var servings float64
+	if servingType == "weight" {
+		// Input is in grams, convert to servings (grams / 100)
+		servings = servingsInput / 100
+	} else {
+		// Input is count (unit-based), use directly
+		servings = servingsInput
 	}
 
 	date := r.FormValue("date")
@@ -272,7 +290,7 @@ func getDaySummary(date string, userID int64) models.DaySummary {
 	// Single optimized query with JOINs to avoid N+1 queries
 	rows, err := db.DB.Query(`
 		SELECT e.id, e.food_id, e.date, e.meal, e.servings, COALESCE(e.notes, ''),
-		       f.id, f.name,
+		       f.id, f.name, f.serving_type, f.serving_size,
 		       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
 		       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
 		       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
@@ -282,7 +300,7 @@ func getDaySummary(date string, userID int64) models.DaySummary {
 		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
 		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
 		WHERE e.date = ? AND e.deleted_at IS NULL AND e.user_id = ?
-		GROUP BY e.id, e.food_id, e.date, e.meal, e.servings, e.notes, f.id, f.name
+		GROUP BY e.id, e.food_id, e.date, e.meal, e.servings, e.notes, f.id, f.name, f.serving_type, f.serving_size
 		ORDER BY e.created_at ASC
 	`, date, userID)
 	if err != nil {
@@ -297,7 +315,7 @@ func getDaySummary(date string, userID int64) models.DaySummary {
 		var f models.Food
 
 		if err := rows.Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
-			&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
+			&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			log.Printf("getDaySummary: scan failed: %v", err)
 
 			continue

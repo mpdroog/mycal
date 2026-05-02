@@ -173,6 +173,12 @@ func loadTestTemplates() (*Templates, error) {
 		"multiplyFloat": func(a, b float64) float64 {
 			return a * b
 		},
+		"subtract": func(a, b int) int {
+			return a - b
+		},
+		"version": func() string {
+			return "test"
+		},
 	}
 
 	base := filepath.Join("templates", "base.html")

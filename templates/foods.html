@@ -6,6 +6,14 @@
     <a href="/foods/new" class="btn btn-accent rounded-circle d-flex align-items-center justify-content-center icon-circle-sm">+</a>
 </div>
 
+<form action="/foods" method="GET" class="mb-3">
+    <div class="input-group">
+        <input type="text" name="q" class="form-control" placeholder="Search foods..." value="{{.Query}}">
+        <button type="submit" class="btn btn-outline-secondary">Search</button>
+        {{if .Query}}<a href="/foods" class="btn btn-outline-secondary">Clear</a>{{end}}
+    </div>
+</form>
+
 {{if .Foods}}
 <div class="card">
     <ul class="list-unstyled mb-0">
@@ -41,10 +49,33 @@
         {{end}}
     </ul>
 </div>
+
+{{if gt .TotalPages 1}}
+<nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center mb-0">
+        <li class="page-item{{if not .HasPrev}} disabled{{end}}">
+            <a class="page-link" href="/foods?page={{.PrevPage}}{{if .Query}}&q={{.Query}}{{end}}">&laquo;</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">{{.Page}} / {{.TotalPages}}</span>
+        </li>
+        <li class="page-item{{if not .HasNext}} disabled{{end}}">
+            <a class="page-link" href="/foods?page={{.NextPage}}{{if .Query}}&q={{.Query}}{{end}}">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+{{end}}
+
+<p class="text-center text-secondary small mt-2">{{.TotalCount}} food{{if ne .TotalCount 1}}s{{end}}</p>
 {{else}}
 <div class="text-center py-5 text-secondary">
+    {{if .Query}}
+    <p>No foods found matching "{{.Query}}"</p>
+    <a href="/foods" class="btn btn-outline-secondary">Clear search</a>
+    {{else}}
     <p>No foods yet. Create your first food by combining ingredients!</p>
     <a href="/foods/new" class="btn btn-accent">Add Food</a>
+    {{end}}
 </div>
 {{end}}
 {{end}}

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -21,6 +22,10 @@ import (
 )
 
 const compressionLevel = 5
+
+// Version is set at build time via ldflags
+// go build -ldflags "-X main.Version=$(git rev-parse --short HEAD)"
+var Version = "dev"
 
 var funcMap = template.FuncMap{
 	"prevDay": func(date string) string {
@@ -119,6 +124,12 @@ var funcMap = template.FuncMap{
 	},
 	"multiplyFloat": func(a, b float64) float64 {
 		return a * b
+	},
+	"subtract": func(a, b int) int {
+		return a - b
+	},
+	"version": func() string {
+		return Version
 	},
 }
 
@@ -239,8 +250,16 @@ func main() {
 	r.Use(middleware.Compress(compressionLevel))
 
 	// Static files (no auth required)
+	// Strip version from paths like style.vdev.css → style.css for cache busting
+	versionPattern := regexp.MustCompile(`\.v[^.]+\.`)
 	fs := http.FileServer(http.Dir("static"))
-	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Strip /static/ prefix and version suffix
+		path := r.URL.Path[len("/static/"):]
+		path = versionPattern.ReplaceAllString(path, ".")
+		r.URL.Path = "/" + path
+		fs.ServeHTTP(w, r)
+	}))
 
 	// Public routes (no auth required)
 	r.Get("/login", handlers.Login(tmpls.Login))

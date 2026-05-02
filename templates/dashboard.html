@@ -3,7 +3,7 @@
 {{define "content"}}
 <!-- Configuration for JavaScript -->
 <script id="dashboardConfig" type="application/json"
-    data-search-items='[{{range $i, $f := .Foods}}{{if $i}},{{end}}{"type":"food","id":{{$f.ID}},"name":"{{$f.Name}}","calories":{{$f.Calories}}}{{end}}{{if and .Foods .Ingredients}},{{end}}{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"type":"ingredient","id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"servingSize":"{{$ing.ServingSize}}"}{{end}}]'
+    data-search-items='[{{range $i, $f := .Foods}}{{if $i}},{{end}}{"type":"food","id":{{$f.ID}},"name":"{{$f.Name}}","calories":{{$f.Calories}},"servingType":"{{$f.ServingType}}","servingSize":"{{$f.ServingSize}}"}{{end}}{{if and .Foods .Ingredients}},{{end}}{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"type":"ingredient","id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"servingType":"{{$ing.ServingType}}","servingSize":"{{$ing.ServingSize}}"}{{end}}]'
     data-goal-calories="{{.Profile.CaloriesGoal}}"
     data-goal-protein="{{.Profile.ProteinGoal}}"
     data-goal-carbs="{{.Profile.CarbsGoal}}"
@@ -31,8 +31,9 @@
                 <path class="calorie-ring-progress" stroke-dasharray="{{percentage (intToFloat .Summary.Calories) (intToFloat .Profile.CaloriesGoal)}}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
             </svg>
             <div class="calorie-ring-inner">
-                <div class="fs-4 fw-bold">{{.Summary.Calories}}</div>
-                <small class="opacity-75">kcal</small>
+                {{$remaining := subtract .Profile.CaloriesGoal .Summary.Calories}}
+                <div class="fs-4 fw-bold{{if lt $remaining 0}} text-danger{{end}}" id="remainingCal" data-goal="{{.Profile.CaloriesGoal}}">{{$remaining}}</div>
+                <small class="opacity-75">left (kcal)</small>
             </div>
         </div>
         <div class="d-flex flex-column align-items-center">
@@ -104,7 +105,10 @@
                     </select>
                 </div>
                 <div class="col">
-                    <input type="number" name="servings" value="1" step="0.25" min="0.25" class="form-control" placeholder="Servings">
+                    <div class="input-group">
+                        <input type="number" name="servings" id="servingsInput" value="100" step="1" min="1" class="form-control" placeholder="Amount">
+                        <span class="input-group-text" id="servingsLabel">g</span>
+                    </div>
                 </div>
             </div>
             <button type="submit" class="btn btn-accent w-100">Add</button>
@@ -141,14 +145,24 @@
                 data-base-protein="{{printf "%.2f" .Food.Protein}}"
                 data-base-carbs="{{printf "%.2f" .Food.Carbs}}"
                 data-base-fat="{{printf "%.2f" .Food.Fat}}"
-                data-original-servings="{{printf "%.2f" .Servings}}">
+                data-original-servings="{{printf "%.2f" .Servings}}"
+                data-serving-type="{{.Food.ServingType}}"
+                data-serving-size="{{.Food.ServingSize}}">
                 <input type="checkbox" class="form-check-input entry-toggle" checked>
                 <div class="flex-grow-1">
                     <span class="fw-medium entry-name">{{.Food.Name}}</span>
                     <small class="d-block text-accent entry-calories">{{multiply .Food.Calories .Servings}} kcal</small>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <input type="number" class="form-control form-control-sm servings-input servings-input-width" value="{{printf "%.2g" .Servings}}" step="0.25" min="0.25">
+                    <div class="input-group input-group-sm servings-input-width">
+                        {{if eq .Food.ServingType "unit"}}
+                        <input type="number" class="form-control servings-input" value="{{printf "%.0f" .Servings}}" step="1" min="1">
+                        <span class="input-group-text serving-label">× {{.Food.ServingSize}}</span>
+                        {{else}}
+                        <input type="number" class="form-control servings-input" value="{{printf "%.0f" (multiplyFloat .Servings 100)}}" step="10" min="10">
+                        <span class="input-group-text serving-label">g</span>
+                        {{end}}
+                    </div>
                     <small class="text-secondary">{{.Meal | title}}</small>
                     <button type="button" class="btn btn-accent btn-sm save-btn d-none">Save</button>
                 </div>
@@ -162,5 +176,5 @@
 </div>
 {{end}}
 
-<script src="/static/js/dashboard.js"></script>
+<script src="/static/js/dashboard.v{{version}}.js"></script>
 {{end}}

@@ -17,6 +17,7 @@ type Ingredient struct {
 	Carbs       float64   `json:"carbs"`
 	Fat         float64   `json:"fat"`
 	ServingSize string    `json:"serving_size"`
+	ServingType string    `json:"serving_type"` // "weight" (per 100g) or "unit" (per piece/glass/etc)
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -33,9 +34,11 @@ type FoodIngredient struct {
 
 // Food is a combination of ingredients (a recipe).
 type Food struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	ServingType string    `json:"serving_type"` // "weight" or "unit" (for simple foods from ingredient)
+	ServingSize string    `json:"serving_size"` // e.g., "100g" or "glass"
+	CreatedAt   time.Time `json:"created_at"`
 
 	// Computed from ingredients
 	Calories int     `json:"calories"`

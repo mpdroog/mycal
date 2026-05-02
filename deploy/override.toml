@@ -1,0 +1,20 @@
+# MyCal hfast configuration
+# Place in /var/www/mycal.example.com/override.toml
+
+# Reverse proxy to MyCal backend
+Proxy = "http://127.0.0.1:8080"
+
+# No external domains needed (self-contained app)
+ExcludedDomains = []
+
+# Disable dev mode for production
+DevMode = false
+
+# Rate limiting enabled
+Ratelimit = true
+
+# Optional: IP whitelist (uncomment to restrict access)
+# Authlist = { "192.168.1.0/24" = true }
+
+# Optional: Basic auth for entire site (uncomment to enable)
+# Admin = { "username" = "password" }

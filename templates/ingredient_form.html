@@ -14,8 +14,22 @@
             </div>
 
             <div class="mb-3">
-                <label for="serving_size" class="form-label">Serving Size (nutritional values are per this amount)</label>
-                <input type="text" id="serving_size" name="serving_size" value="{{.Ingredient.ServingSize}}" class="form-control" placeholder="e.g., 100g">
+                <label class="form-label">Serving Type</label>
+                <div class="d-flex gap-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="serving_type" id="serving_type_weight" value="weight" {{if or (eq .Ingredient.ServingType "") (eq .Ingredient.ServingType "weight")}}checked{{end}} onchange="toggleUnitField()">
+                        <label class="form-check-label" for="serving_type_weight">Per 100g</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="serving_type" id="serving_type_unit" value="unit" {{if eq .Ingredient.ServingType "unit"}}checked{{end}} onchange="toggleUnitField()">
+                        <label class="form-check-label" for="serving_type_unit">Per unit</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3" id="unit_name_field" style="{{if or (eq .Ingredient.ServingType "") (eq .Ingredient.ServingType "weight")}}display:none{{end}}">
+                <label for="serving_size" class="form-label">Unit name</label>
+                <input type="text" id="serving_size" name="serving_size" value="{{if eq .Ingredient.ServingType "unit"}}{{.Ingredient.ServingSize}}{{end}}" class="form-control" placeholder="e.g., glass, slice, topping">
             </div>
 
             <div class="mb-3">
@@ -25,12 +39,12 @@
 
             <div class="row g-2 mb-3">
                 <div class="col">
-                    <label for="protein" class="form-label">Protein (g)</label>
-                    <input type="number" id="protein" name="protein" value="{{printf "%.1f" .Ingredient.Protein}}" step="0.1" class="form-control">
-                </div>
-                <div class="col">
                     <label for="carbs" class="form-label">Carbs (g)</label>
                     <input type="number" id="carbs" name="carbs" value="{{printf "%.1f" .Ingredient.Carbs}}" step="0.1" class="form-control">
+                </div>
+                <div class="col">
+                    <label for="protein" class="form-label">Protein (g)</label>
+                    <input type="number" id="protein" name="protein" value="{{printf "%.1f" .Ingredient.Protein}}" step="0.1" class="form-control">
                 </div>
                 <div class="col">
                     <label for="fat" class="form-label">Fat (g)</label>
@@ -45,4 +59,19 @@
         </form>
     </div>
 </div>
+
+<script>
+function toggleUnitField() {
+    var unitField = document.getElementById('unit_name_field');
+    var servingSizeInput = document.getElementById('serving_size');
+    var isUnit = document.getElementById('serving_type_unit').checked;
+
+    if (isUnit) {
+        unitField.style.display = 'block';
+    } else {
+        unitField.style.display = 'none';
+        servingSizeInput.value = '';
+    }
+}
+</script>
 {{end}}

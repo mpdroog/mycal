@@ -182,6 +182,12 @@ func loadTestTemplates() (*TestTemplates, error) {
 		"multiplyFloat": func(a, b float64) float64 {
 			return a * b
 		},
+		"subtract": func(a, b int) int {
+			return a - b
+		},
+		"version": func() string {
+			return "test"
+		},
 	}
 
 	// Find templates directory (relative to test location)
@@ -1105,7 +1111,8 @@ func TestFloatingSummaryPresentWithoutEntries(t *testing.T) {
 	}
 
 	// Verify the dashboard JavaScript is loaded (scroll handler logic is in external file)
-	if !strings.Contains(body, `src="/static/js/dashboard.js"`) {
+	// Uses versioned filename pattern: dashboard.v{version}.js
+	if !strings.Contains(body, `/static/js/dashboard.v`) {
 		t.Error("Dashboard JavaScript should be loaded")
 	}
 
@@ -1227,9 +1234,9 @@ func TestEntryServingsPersistedAndDisplayed(t *testing.T) {
 		}
 	}
 
-	// The servings input should show 5
-	if !strings.Contains(body, `value="5"`) && !strings.Contains(body, `value="5.0"`) {
-		t.Error("Servings input should show value 5 after reload")
+	// The servings input should show 500 (5 servings * 100g for weight-based)
+	if !strings.Contains(body, `value="500"`) {
+		t.Error("Servings input should show value 500 (grams) after reload for weight-based item")
 	}
 
 	// The total in the header should also be 500
@@ -1338,9 +1345,9 @@ func TestQuickAddIngredientServingsPersistedAndDisplayed(t *testing.T) {
 		}
 	}
 
-	// The servings input should show 5
-	if !strings.Contains(body, `value="5"`) && !strings.Contains(body, `value="5.0"`) {
-		t.Error("Servings input should show value 5 after reload")
+	// The servings input should show 500 (5 servings * 100g for weight-based)
+	if !strings.Contains(body, `value="500"`) {
+		t.Error("Servings input should show value 500 (grams) after reload for weight-based item")
 	}
 }
 
@@ -1579,6 +1586,188 @@ func TestDeleteEntryDateFormatNormalization(t *testing.T) {
 	// Should contain the proper date format
 	if !strings.Contains(location, "date=2024-06-15") {
 		t.Errorf("Redirect URL should contain date=2024-06-15, got: %s", location)
+	}
+}
+
+func TestCalorieRingShowsRemaining(t *testing.T) {
+	// Set profile with specific goal
+	form := url.Values{}
+	form.Set("calories_goal", "2000")
+	form.Set("protein_goal", "150")
+	form.Set("carbs_goal", "250")
+	form.Set("fat_goal", "65")
+
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Create an ingredient and food for entries
+	form = url.Values{}
+	form.Set("name", "Ring Test Ingredient")
+	form.Set("calories", "500")
+	form.Set("protein", "20")
+	form.Set("carbs", "50")
+	form.Set("fat", "10")
+	form.Set("serving_size", "100g")
+
+	req = httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Ring Test Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Create a food
+	form = url.Values{}
+	form.Set("name", "Ring Test Food")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var foodID int64
+
+	err = db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Ring Test Food").Scan(&foodID)
+	if err != nil {
+		t.Fatalf("Could not find food: %v", err)
+	}
+
+	// Create entry with 500 calories (goal is 2000, so remaining should be 1500)
+	testDate := "2024-08-01"
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, ?, 'lunch', 1, ?)`, foodID, testDate, testUser.ID)
+	if err != nil {
+		t.Fatalf("Could not create entry: %v", err)
+	}
+
+	// Check dashboard
+	req = httptest.NewRequest(http.MethodGet, "/?date="+testDate, http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	// The calorie-ring-inner should show remaining (1500), not eaten (500)
+	// Look for the pattern: calorie-ring-inner followed by 1500
+	if !strings.Contains(body, `calorie-ring-inner`) {
+		t.Fatal("Dashboard should have calorie-ring-inner element")
+	}
+
+	// The ring should show "1500" as remaining (2000 goal - 500 eaten)
+	ringIdx := strings.Index(body, `calorie-ring-inner`)
+	if ringIdx == -1 {
+		t.Fatal("Could not find calorie-ring-inner")
+	}
+
+	// Extract a snippet after calorie-ring-inner to check its content
+	snippet := body[ringIdx : ringIdx+200]
+
+	if !strings.Contains(snippet, ">1500<") {
+		t.Errorf("Calorie ring should show remaining calories (1500), not eaten. Found: %s", snippet)
+	}
+}
+
+func TestCalorieRingShowsNegativeWhenOverBudget(t *testing.T) {
+	// Set profile with specific goal
+	form := url.Values{}
+	form.Set("calories_goal", "1000")
+	form.Set("protein_goal", "100")
+	form.Set("carbs_goal", "150")
+	form.Set("fat_goal", "40")
+
+	req := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec := httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	// Create an ingredient with high calories
+	form = url.Values{}
+	form.Set("name", "Over Budget Ingredient")
+	form.Set("calories", "600")
+	form.Set("protein", "20")
+	form.Set("carbs", "50")
+	form.Set("fat", "10")
+	form.Set("serving_size", "100g")
+
+	req = httptest.NewRequest(http.MethodPost, "/ingredients/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var ingredientID int64
+
+	err := db.DB.QueryRow("SELECT id FROM ingredients WHERE name = ?", "Over Budget Ingredient").Scan(&ingredientID)
+	if err != nil {
+		t.Fatalf("Could not find ingredient: %v", err)
+	}
+
+	// Create a food
+	form = url.Values{}
+	form.Set("name", "Over Budget Food")
+	form.Set("ingredients", `[{"ingredient_id": `+strconv.FormatInt(ingredientID, 10)+`, "amount_grams": 100}]`)
+
+	req = httptest.NewRequest(http.MethodPost, "/foods/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	rec = httptest.NewRecorder()
+	testRouter.ServeHTTP(rec, req)
+
+	var foodID int64
+
+	err = db.DB.QueryRow("SELECT id FROM foods WHERE name = ?", "Over Budget Food").Scan(&foodID)
+	if err != nil {
+		t.Fatalf("Could not find food: %v", err)
+	}
+
+	// Create 2 entries with 600 calories each = 1200 total (goal is 1000, so -200 over)
+	testDate := "2024-08-02"
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, ?, 'breakfast', 1, ?)`, foodID, testDate, testUser.ID)
+	if err != nil {
+		t.Fatalf("Could not create entry 1: %v", err)
+	}
+
+	_, err = db.DB.Exec(`INSERT INTO entries (food_id, date, meal, servings, user_id) VALUES (?, ?, 'lunch', 1, ?)`, foodID, testDate, testUser.ID)
+	if err != nil {
+		t.Fatalf("Could not create entry 2: %v", err)
+	}
+
+	// Check dashboard
+	req = httptest.NewRequest(http.MethodGet, "/?date="+testDate, http.NoBody)
+	rec = httptest.NewRecorder()
+
+	testRouter.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+
+	// The calorie-ring-inner should show -200 (over budget) with text-danger class
+	ringIdx := strings.Index(body, `calorie-ring-inner`)
+	if ringIdx == -1 {
+		t.Fatal("Could not find calorie-ring-inner")
+	}
+
+	snippet := body[ringIdx : ringIdx+300]
+
+	// Should show negative number
+	if !strings.Contains(snippet, ">-200<") {
+		t.Errorf("Calorie ring should show negative remaining (-200) when over budget. Found: %s", snippet)
+	}
+
+	// Should have text-danger class for red color
+	if !strings.Contains(snippet, "text-danger") {
+		t.Errorf("Calorie ring should have text-danger class when over budget. Found: %s", snippet)
 	}
 }
 

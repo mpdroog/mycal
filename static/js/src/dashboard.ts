@@ -5,6 +5,7 @@ interface SearchItem {
     id: number;
     name: string;
     calories: number;
+    servingType?: "weight" | "unit";
     servingSize?: string;
 }
 
@@ -93,6 +94,27 @@ interface PrevTotals {
         } else {
             ingredientIdInput.value = String(item.id);
             foodIdInput.value = "";
+        }
+
+        // Update servings input based on serving type
+        const servingsInput = document.getElementById("servingsInput") as HTMLInputElement | null;
+        const servingsLabel = document.getElementById("servingsLabel");
+
+        if (servingsInput && servingsLabel) {
+            const servingType = item.servingType || "weight";
+            const servingSize = item.servingSize || "100g";
+
+            if (servingType === "unit") {
+                servingsInput.value = "1";
+                servingsInput.step = "1";
+                servingsInput.min = "1";
+                servingsLabel.textContent = "× " + servingSize;
+            } else {
+                servingsInput.value = "100";
+                servingsInput.step = "10";
+                servingsInput.min = "10";
+                servingsLabel.textContent = "g";
+            }
         }
     }
 
@@ -261,7 +283,13 @@ interface PrevTotals {
 
             if (!checkbox || !servingsInput || !caloriesEl || !saveBtn) return;
 
-            const servings = parseFloat(servingsInput.value) || 0;
+            const inputValue = parseFloat(servingsInput.value) || 0;
+            const servingType = row.dataset["servingType"] || "weight";
+
+            // Convert input value to servings based on serving type
+            // Weight-based: input is grams, servings = grams / 100
+            // Unit-based: input is count, servings = count
+            const servings = servingType === "unit" ? inputValue : inputValue / 100;
 
             // Calculate this row's nutrition
             const baseCal = parseInt(row.dataset["baseCalories"] ?? "0", 10);
@@ -287,9 +315,11 @@ interface PrevTotals {
             // Visual feedback for disabled items
             row.classList.toggle("disabled", !checkbox.checked);
 
-            // Show/hide save button if servings changed
-            const original = parseFloat(row.dataset["originalServings"] ?? "0");
-            if (Math.abs(servings - original) > 0.001) {
+            // Show/hide save button if input value changed
+            // originalServings is stored as servings (not input value), so convert for comparison
+            const originalServings = parseFloat(row.dataset["originalServings"] ?? "0");
+            const originalInputValue = servingType === "unit" ? originalServings : originalServings * 100;
+            if (Math.abs(inputValue - originalInputValue) > 0.001) {
                 saveBtn.classList.remove("d-none");
             } else {
                 saveBtn.classList.add("d-none");
@@ -302,14 +332,13 @@ interface PrevTotals {
         const carbChanged = prevTotals.carb !== null && Math.round(prevTotals.carb) !== Math.round(totalCarb);
         const fatChanged = prevTotals.fat !== null && Math.round(prevTotals.fat) !== Math.round(totalFat);
 
-        // Update header displays
+        // Update header displays (eaten calories only - index 0)
+        // Index 1 is remaining (updated separately), index 2 is goal (static)
         const headerValues = document.querySelectorAll(".summary-header .fs-4.fw-bold");
-        headerValues.forEach((el, i) => {
-            if (i === 0 || i === 1) {
-                el.textContent = String(totalCal);
-                if (calChanged) animatePop(el);
-            }
-        });
+        if (headerValues[0]) {
+            headerValues[0].textContent = String(totalCal);
+            if (calChanged) animatePop(headerValues[0]);
+        }
 
         // Update macro displays with animations
         const macroValues = document.querySelectorAll(".macro-progress .fw-bold");
@@ -356,6 +385,15 @@ interface PrevTotals {
                 void (ringSvg as HTMLElement).offsetWidth;
                 ringSvg.classList.add("ring-pulse");
             }
+        }
+
+        // Update remaining calories display in ring
+        const remainingCal = document.getElementById("remainingCal");
+        if (remainingCal) {
+            const remaining = goals.calories - totalCal;
+            remainingCal.textContent = String(remaining);
+            remainingCal.classList.toggle("text-danger", remaining < 0);
+            if (calChanged) animatePop(remainingCal);
         }
 
         // Update floating summary with animations
@@ -410,18 +448,24 @@ interface PrevTotals {
             const servingsInput = row.querySelector<HTMLInputElement>(".servings-input");
             if (!entryId || !servingsInput) return;
 
-            const servings = servingsInput.value;
+            const inputValue = parseFloat(servingsInput.value) || 0;
+            const servingType = row.dataset["servingType"] || "weight";
+
+            // Convert input value to servings based on serving type
+            // Weight-based: input is grams, servings = grams / 100
+            // Unit-based: input is count, servings = count
+            const servings = servingType === "unit" ? inputValue : inputValue / 100;
 
             // Send update request
             const formData = new FormData();
-            formData.append("servings", servings);
+            formData.append("servings", String(servings));
 
             fetch(`/entries/${entryId}/servings`, {
                 method: "POST",
                 body: formData
             }).then((response) => {
                 if (response.ok) {
-                    row.dataset["originalServings"] = servings;
+                    row.dataset["originalServings"] = String(servings);
                     target.classList.add("d-none");
                 }
             }).catch(() => {

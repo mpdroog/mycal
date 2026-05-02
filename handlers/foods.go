@@ -66,7 +66,7 @@ func getFoodWithNutrition(foodID int64) (*models.Food, error) {
 // Uses a single optimized query with JOINs to avoid N+1 queries.
 func getAllFoods() ([]models.Food, error) {
 	rows, err := db.DB.Query(`
-		SELECT f.id, f.name, f.created_at,
+		SELECT f.id, f.name, f.serving_type, f.serving_size, f.created_at,
 		       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
 		       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
 		       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
@@ -75,7 +75,7 @@ func getAllFoods() ([]models.Food, error) {
 		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
 		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
 		WHERE f.deleted_at IS NULL
-		GROUP BY f.id, f.name, f.created_at
+		GROUP BY f.id, f.name, f.serving_type, f.serving_size, f.created_at
 		ORDER BY f.name
 	`)
 	if err != nil {
@@ -88,7 +88,7 @@ func getAllFoods() ([]models.Food, error) {
 	for rows.Next() {
 		var f models.Food
 
-		if err := rows.Scan(&f.ID, &f.Name, &f.CreatedAt, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.CreatedAt, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			return nil, err
 		}
 
@@ -102,17 +102,84 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.GetUserFromContext(r.Context())
 
-		foods, err := getAllFoods()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Get search and pagination params
+		query := r.URL.Query().Get("q")
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		offset := (page - 1) * itemsPerPage
 
+		// Count total foods
+		var totalCount int
+		var countArgs []interface{}
+		countQuery := `SELECT COUNT(*) FROM foods WHERE deleted_at IS NULL`
+		if query != "" {
+			countQuery += ` AND name LIKE ?`
+			countArgs = append(countArgs, "%"+query+"%")
+		}
+		if err := db.DB.QueryRow(countQuery, countArgs...).Scan(&totalCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
+		// Build list query with search and pagination
+		listQuery := `
+			SELECT f.id, f.name, f.serving_type, f.serving_size, f.created_at,
+			       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
+			       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
+			       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
+			       COALESCE(SUM(i.fat * (fi.amount_grams / 100.0)), 0) as fat
+			FROM foods f
+			LEFT JOIN food_ingredients fi ON f.id = fi.food_id
+			LEFT JOIN ingredients i ON fi.ingredient_id = i.id
+			WHERE f.deleted_at IS NULL`
+		var listArgs []interface{}
+		if query != "" {
+			listQuery += ` AND f.name LIKE ?`
+			listArgs = append(listArgs, "%"+query+"%")
+		}
+		listQuery += ` GROUP BY f.id, f.name, f.serving_type, f.serving_size, f.created_at ORDER BY f.name LIMIT ? OFFSET ?`
+		listArgs = append(listArgs, itemsPerPage, offset)
+
+		rows, err := db.DB.Query(listQuery, listArgs...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var foods []models.Food
+		for rows.Next() {
+			var f models.Food
+			if err := rows.Scan(&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.CreatedAt, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			foods = append(foods, f)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		totalPages := (totalCount + itemsPerPage - 1) / itemsPerPage
+		if totalPages < 1 {
+			totalPages = 1
+		}
+
 		data := map[string]interface{}{
-			"Title": "Foods",
-			"Foods": foods,
-			"User":  user,
+			"Title":      "Foods",
+			"Foods":      foods,
+			"User":       user,
+			"Query":      query,
+			"Page":       page,
+			"TotalPages": totalPages,
+			"TotalCount": totalCount,
+			"HasPrev":    page > 1,
+			"HasNext":    page < totalPages,
+			"PrevPage":   page - 1,
+			"NextPage":   page + 1,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
