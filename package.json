@@ -5,9 +5,10 @@
   "scripts": {
     "lint:js": "eslint 'static/js/src/**/*.ts'",
     "lint:css": "stylelint 'static/css/**/*.css' --ignore-pattern '*.min.css'",
+    "lint:csp": "./scripts/lint-csp.sh",
     "typecheck": "tsc --noEmit",
     "build": "esbuild $(find static/js/src -name '*.ts' ! -name '*.d.ts') --outdir=static/js --minify --target=es2020",
-    "lint": "npm run lint:js && npm run lint:css && npm run typecheck"
+    "lint": "npm run lint:js && npm run lint:css && npm run lint:csp && npm run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
