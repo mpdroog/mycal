@@ -3,6 +3,7 @@ module github.com/mpdroog/mycal
 go 1.26.1
 
 require (
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/go-chi/chi/v5 v5.2.5
 	golang.org/x/crypto v0.32.0
 	golang.org/x/text v0.36.0

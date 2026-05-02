@@ -35,18 +35,6 @@ interface PrevTotals {
         };
     }
 
-    // Utility: Throttle function to limit function calls to once per interval
-    function throttle<T extends (...args: unknown[]) => void>(fn: T, limit: number): (...args: Parameters<T>) => void {
-        let inThrottle = false;
-        return function(this: unknown, ...args: Parameters<T>): void {
-            if (!inThrottle) {
-                fn.apply(this, args);
-                inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
-            }
-        };
-    }
-
     // Initialize progress bar widths from data attributes (CSP-safe)
     document.querySelectorAll<HTMLElement>(".progress-bar[data-width]").forEach((bar) => {
         const width = bar.dataset["width"];
@@ -238,25 +226,6 @@ interface PrevTotals {
                 showError("Please select a food or ingredient", "Use the search box to find and select an item before adding.");
             }
         });
-    }
-
-    // Show/hide floating summary based on scroll position
-    const floatingSummary = document.getElementById("floatingSummary");
-    const summaryHeader = document.querySelector(".summary-header");
-
-    if (floatingSummary && summaryHeader) {
-        function checkScroll(): void {
-            const rect = summaryHeader!.getBoundingClientRect();
-            if (rect.top < 0) {
-                floatingSummary!.classList.remove("d-none");
-            } else {
-                floatingSummary!.classList.add("d-none");
-            }
-        }
-
-        // Throttled scroll handler to reduce reflow triggers
-        window.addEventListener("scroll", throttle(checkScroll, 100), { passive: true });
-        checkScroll();
     }
 
     // Toggle and servings functionality (requires entries)

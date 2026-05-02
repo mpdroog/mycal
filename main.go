@@ -4,12 +4,14 @@ import (
 	"flag"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/coreos/go-systemd/v22/daemon"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -323,13 +325,26 @@ func main() {
 
 	log.Printf("Starting MyCal on %s", *addr)
 
+	// Create listener first so we can notify systemd when ready
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+
 	server := &http.Server{
-		Addr:              *addr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	if err := server.ListenAndServe(); err != nil {
+	// Notify systemd we're ready (no-op if not running under systemd)
+	sent, err := daemon.SdNotify(false, daemon.SdNotifyReady)
+	if err != nil {
+		log.Printf("sd_notify failed: %v", err)
+	} else if !sent {
+		log.Printf("sd_notify: NOTIFY_SOCKET not set")
+	}
+
+	if err := server.Serve(listener); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }
