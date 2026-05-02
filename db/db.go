@@ -82,6 +82,11 @@ func migrate() error {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date)`,
+		`CREATE INDEX IF NOT EXISTS idx_foods_deleted_at ON foods(deleted_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_ingredients_deleted_at ON ingredients(deleted_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_entries_deleted_at ON entries(deleted_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_food_ingredients_ingredient ON food_ingredients(ingredient_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_entries_food ON entries(food_id)`,
 		`CREATE TABLE IF NOT EXISTS meal_templates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,

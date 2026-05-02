@@ -255,12 +255,20 @@ func RestoreEntry(w http.ResponseWriter, r *http.Request) {
 func getDaySummary(date string) models.DaySummary {
 	summary := models.DaySummary{Date: date}
 
+	// Single optimized query with JOINs to avoid N+1 queries
 	rows, err := db.DB.Query(`
 		SELECT e.id, e.food_id, e.date, e.meal, e.servings, COALESCE(e.notes, ''),
-		       f.id, f.name
+		       f.id, f.name,
+		       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
+		       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
+		       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
+		       COALESCE(SUM(i.fat * (fi.amount_grams / 100.0)), 0) as fat
 		FROM entries e
 		JOIN foods f ON e.food_id = f.id
+		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
+		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
 		WHERE e.date = ? AND e.deleted_at IS NULL
+		GROUP BY e.id, e.food_id, e.date, e.meal, e.servings, e.notes, f.id, f.name
 		ORDER BY e.created_at ASC
 	`, date)
 	if err != nil {
@@ -275,28 +283,19 @@ func getDaySummary(date string) models.DaySummary {
 		var f models.Food
 
 		if err := rows.Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
-			&f.ID, &f.Name); err != nil {
+			&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			log.Printf("getDaySummary: scan failed: %v", err)
 
 			continue
 		}
 
-		// Get nutrition for this food
-		foodWithNutrition, err := getFoodWithNutrition(f.ID)
-		if err != nil {
-			log.Printf("getDaySummary: failed to get nutrition for food %d: %v", f.ID, err)
-			e.Food = &f
-		} else {
-			e.Food = foodWithNutrition
-		}
+		e.Food = &f
 
 		// Calculate totals based on servings
-		if e.Food != nil {
-			summary.Calories += int(float64(e.Food.Calories) * e.Servings)
-			summary.Protein += e.Food.Protein * e.Servings
-			summary.Carbs += e.Food.Carbs * e.Servings
-			summary.Fat += e.Food.Fat * e.Servings
-		}
+		summary.Calories += int(float64(f.Calories) * e.Servings)
+		summary.Protein += f.Protein * e.Servings
+		summary.Carbs += f.Carbs * e.Servings
+		summary.Fat += f.Fat * e.Servings
 
 		summary.Entries = append(summary.Entries, e)
 	}

@@ -62,8 +62,21 @@ func getFoodWithNutrition(foodID int64) (*models.Food, error) {
 }
 
 // getAllFoods returns all foods with their calculated nutritional values.
+// Uses a single optimized query with JOINs to avoid N+1 queries.
 func getAllFoods() ([]models.Food, error) {
-	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE deleted_at IS NULL ORDER BY name`)
+	rows, err := db.DB.Query(`
+		SELECT f.id, f.name, f.created_at,
+		       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
+		       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
+		       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
+		       COALESCE(SUM(i.fat * (fi.amount_grams / 100.0)), 0) as fat
+		FROM foods f
+		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
+		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
+		WHERE f.deleted_at IS NULL
+		GROUP BY f.id, f.name, f.created_at
+		ORDER BY f.name
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -74,20 +87,11 @@ func getAllFoods() ([]models.Food, error) {
 	for rows.Next() {
 		var f models.Food
 
-		if err := rows.Scan(&f.ID, &f.Name); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.CreatedAt, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			return nil, err
 		}
 
-		// Get nutrition for this food
-		foodWithNutrition, err := getFoodWithNutrition(f.ID)
-		if err != nil {
-			log.Printf("getAllFoods: failed to get nutrition for food %d: %v", f.ID, err)
-			foods = append(foods, f)
-
-			continue
-		}
-
-		foods = append(foods, *foodWithNutrition)
+		foods = append(foods, f)
 	}
 
 	return foods, rows.Err()
@@ -358,7 +362,20 @@ func RestoreFood(w http.ResponseWriter, r *http.Request) {
 func SearchFoods(w http.ResponseWriter, r *http.Request) {
 	q := "%" + r.URL.Query().Get("q") + "%"
 
-	rows, err := db.DB.Query(`SELECT id, name FROM foods WHERE name LIKE ? AND deleted_at IS NULL ORDER BY name LIMIT 10`, q)
+	rows, err := db.DB.Query(`
+		SELECT f.id, f.name,
+		       COALESCE(SUM(CAST(i.calories * (fi.amount_grams / 100.0) AS INTEGER)), 0) as calories,
+		       COALESCE(SUM(i.protein * (fi.amount_grams / 100.0)), 0) as protein,
+		       COALESCE(SUM(i.carbs * (fi.amount_grams / 100.0)), 0) as carbs,
+		       COALESCE(SUM(i.fat * (fi.amount_grams / 100.0)), 0) as fat
+		FROM foods f
+		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
+		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
+		WHERE f.name LIKE ? AND f.deleted_at IS NULL
+		GROUP BY f.id, f.name
+		ORDER BY f.name
+		LIMIT 10
+	`, q)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 
@@ -373,21 +390,13 @@ func SearchFoods(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var f models.Food
 
-		if err := rows.Scan(&f.ID, &f.Name); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			log.Printf("SearchFoods scan error: %v", err)
 
 			continue
 		}
 
-		foodWithNutrition, err := getFoodWithNutrition(f.ID)
-		if err != nil {
-			log.Printf("SearchFoods nutrition error: %v", err)
-			foods = append(foods, f)
-
-			continue
-		}
-
-		foods = append(foods, *foodWithNutrition)
+		foods = append(foods, f)
 	}
 
 	if err := json.NewEncoder(w).Encode(foods); err != nil {

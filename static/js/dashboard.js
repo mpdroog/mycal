@@ -2,6 +2,25 @@
 // Dashboard page TypeScript
 (function () {
     "use strict";
+    // Utility: Debounce function to limit how often a function is called
+    function debounce(fn, delay) {
+        let timeoutId;
+        return function (...args) {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => { fn.apply(this, args); }, delay);
+        };
+    }
+    // Utility: Throttle function to limit function calls to once per interval
+    function throttle(fn, limit) {
+        let inThrottle = false;
+        return function (...args) {
+            if (!inThrottle) {
+                fn.apply(this, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
+    }
     // Initialize progress bar widths from data attributes (CSP-safe)
     document.querySelectorAll(".progress-bar[data-width]").forEach((bar) => {
         const width = bar.dataset["width"];
@@ -53,8 +72,9 @@
         return div.innerHTML;
     }
     if (itemSearch && searchResults) {
-        itemSearch.addEventListener("input", function () {
-            const query = this.value.trim();
+        // Debounced search handler to reduce Fuse.js runs on rapid typing
+        const handleSearch = debounce(function () {
+            const query = itemSearch.value.trim();
             if (query.length === 0) {
                 searchResults.classList.add("d-none");
                 searchResults.innerHTML = "";
@@ -81,7 +101,8 @@
             }).join("");
             searchResults.classList.remove("d-none");
             searchResults.dataset["results"] = JSON.stringify(results.map((r) => r.item));
-        });
+        }, 150);
+        itemSearch.addEventListener("input", handleSearch);
         // Handle result click
         searchResults.addEventListener("click", function (e) {
             const target = e.target;
@@ -171,7 +192,8 @@
                 floatingSummary.classList.add("d-none");
             }
         }
-        window.addEventListener("scroll", checkScroll, { passive: true });
+        // Throttled scroll handler to reduce reflow triggers
+        window.addEventListener("scroll", throttle(checkScroll, 100), { passive: true });
         checkScroll();
     }
     // Toggle and servings functionality (requires entries)

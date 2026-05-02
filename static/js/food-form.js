@@ -21,8 +21,67 @@
     const searchResults = document.getElementById("ingredientSearchResults");
     const form = document.getElementById("foodForm");
     const ingredientsJson = document.getElementById("ingredientsJson");
+    const nameInput = document.getElementById("name");
     if (!ingredientsList || !searchResults || !ingredientsJson)
         return;
+    // Track unsaved changes
+    let hasUnsavedChanges = false;
+    let removedIngredient = null;
+    // Store initial state for comparison
+    const initialName = nameInput?.value ?? "";
+    const initialIngredients = new Set();
+    ingredientsList.querySelectorAll(".ingredient-row").forEach((row) => {
+        const id = row.dataset["id"];
+        const amountInput = row.querySelector(".amount-input");
+        if (id && amountInput) {
+            initialIngredients.add(`${id}:${amountInput.value}`);
+        }
+    });
+    function checkForChanges() {
+        if (!nameInput)
+            return;
+        // Check name change
+        if (nameInput.value !== initialName) {
+            setUnsavedChanges(true);
+            return;
+        }
+        // Check ingredients
+        const currentIngredients = new Set();
+        ingredientsList.querySelectorAll(".ingredient-row").forEach((row) => {
+            const id = row.dataset["id"];
+            const amountInput = row.querySelector(".amount-input");
+            if (id && amountInput) {
+                currentIngredients.add(`${id}:${amountInput.value}`);
+            }
+        });
+        // Compare sets
+        if (currentIngredients.size !== initialIngredients.size) {
+            setUnsavedChanges(true);
+            return;
+        }
+        for (const item of currentIngredients) {
+            if (!initialIngredients.has(item)) {
+                setUnsavedChanges(true);
+                return;
+            }
+        }
+        setUnsavedChanges(false);
+    }
+    function setUnsavedChanges(value) {
+        hasUnsavedChanges = value;
+        const indicator = document.getElementById("unsavedIndicator");
+        if (indicator) {
+            indicator.classList.toggle("d-none", !value);
+        }
+    }
+    // Warn on navigation
+    window.addEventListener("beforeunload", function (e) {
+        if (hasUnsavedChanges) {
+            e.preventDefault();
+            return "You have unsaved changes. Are you sure you want to leave?";
+        }
+        return undefined;
+    });
     function escapeHtml(text) {
         const div = document.createElement("div");
         div.textContent = text;
@@ -95,6 +154,7 @@
         }
         searchResults.classList.add("d-none");
         updateTotals();
+        checkForChanges();
     }
     // Search input handler
     if (ingredientSearch) {
@@ -183,14 +243,83 @@
             }
         });
     }
+    function getOrCreateUndoContainer() {
+        let container = document.getElementById("undoContainer");
+        if (!container) {
+            container = document.createElement("div");
+            container.id = "undoContainer";
+            container.className = "mb-2";
+            ingredientsList.parentNode.insertBefore(container, ingredientsList);
+        }
+        return container;
+    }
+    function hideUndoNotification() {
+        const container = document.getElementById("undoContainer");
+        if (container) {
+            container.innerHTML = "";
+        }
+    }
+    function showUndoNotification(ingredientName) {
+        const container = getOrCreateUndoContainer();
+        container.innerHTML =
+            '<div class="alert alert-warning py-2 px-3 d-flex align-items-center justify-content-between mb-0">' +
+                `<span>Removed <strong>${escapeHtml(ingredientName)}</strong></span>` +
+                '<button type="button" class="btn btn-sm btn-warning undo-btn">Undo</button>' +
+                '</div>';
+    }
+    function removeIngredient(row) {
+        // If there's already a pending removal, finalize it
+        if (removedIngredient) {
+            clearTimeout(removedIngredient.timeoutId);
+            removedIngredient = null;
+            hideUndoNotification();
+        }
+        const nameEl = row.querySelector(".fw-medium");
+        const ingredientName = nameEl?.textContent ?? "Ingredient";
+        const nextSibling = row.nextSibling;
+        // Remove from DOM but keep in memory
+        row.remove();
+        updateTotals();
+        checkForChanges();
+        // Show undo notification
+        showUndoNotification(ingredientName);
+        // Set timeout to clear undo option
+        const timeoutId = setTimeout(() => {
+            removedIngredient = null;
+            hideUndoNotification();
+        }, 5000);
+        removedIngredient = { row, nextSibling, timeoutId };
+    }
+    function undoRemoval() {
+        if (!removedIngredient)
+            return;
+        clearTimeout(removedIngredient.timeoutId);
+        // Re-insert the row at original position
+        if (removedIngredient.nextSibling) {
+            ingredientsList.insertBefore(removedIngredient.row, removedIngredient.nextSibling);
+        }
+        else {
+            ingredientsList.appendChild(removedIngredient.row);
+        }
+        removedIngredient = null;
+        hideUndoNotification();
+        updateTotals();
+        checkForChanges();
+    }
     ingredientsList.addEventListener("click", function (e) {
         const target = e.target;
         if (target.classList.contains("remove-ingredient")) {
             const row = target.closest(".ingredient-row");
             if (row) {
-                row.remove();
-                updateTotals();
+                removeIngredient(row);
             }
+        }
+    });
+    // Handle undo button click (delegated from parent since container is dynamic)
+    document.addEventListener("click", function (e) {
+        const target = e.target;
+        if (target.classList.contains("undo-btn") && target.closest("#undoContainer")) {
+            undoRemoval();
         }
     });
     // Update totals when amount changes
@@ -198,11 +327,25 @@
         const target = e.target;
         if (target.classList.contains("amount-input")) {
             updateTotals();
+            checkForChanges();
         }
     });
+    // Track name changes
+    if (nameInput) {
+        nameInput.addEventListener("input", function () {
+            checkForChanges();
+        });
+    }
     if (form) {
         form.addEventListener("submit", function () {
+            // Finalize any pending removal
+            if (removedIngredient) {
+                clearTimeout(removedIngredient.timeoutId);
+                removedIngredient = null;
+            }
             collectIngredients();
+            // Clear flag so beforeunload doesn't trigger
+            hasUnsavedChanges = false;
         });
     }
     updateTotals();

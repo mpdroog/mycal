@@ -6,8 +6,9 @@
     data-ingredients='[{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"protein":{{$ing.Protein}},"carbs":{{$ing.Carbs}},"fat":{{$ing.Fat}},"serving":"{{$ing.ServingSize}}"}{{end}}]'>
 </script>
 
-<div class="mb-3">
-    <h5>{{.Title}}</h5>
+<div class="mb-3 d-flex align-items-center gap-2">
+    <h5 class="mb-0">{{.Title}}</h5>
+    <span id="unsavedIndicator" class="badge bg-warning text-dark d-none">Unsaved changes</span>
 </div>
 
 <div class="card mb-3">
