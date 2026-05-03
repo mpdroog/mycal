@@ -2,13 +2,14 @@ package handlers
 
 import (
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/mpdroog/mycal/auth"
-	"github.com/mpdroog/mycal/db"
+	"github.com/mpdroog/mycal/models"
 )
 
 // Setup handles first-run admin creation.
@@ -106,8 +107,9 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 		_ = auth.AssignOrphanedData(user.ID)
 
 		// Create default profile for user if none exists
-		db.DB.Exec(`INSERT OR IGNORE INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
-			VALUES (?, 2000, 150, 250, 65)`, user.ID)
+		if err := models.CreateDefaultProfile(user.ID); err != nil {
+			log.Printf("Setup: failed to create default profile: %v", err)
+		}
 
 		// Create session and login
 		sessionID, err := auth.CreateSession(user.ID)
@@ -281,8 +283,9 @@ func AdminCreateUser(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		// Create default profile for new user
-		db.DB.Exec(`INSERT INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
-			VALUES (?, 2000, 150, 250, 65)`, user.ID)
+		if err := models.CreateDefaultProfile(user.ID); err != nil {
+			log.Printf("AdminCreateUser: failed to create default profile: %v", err)
+		}
 
 		http.Redirect(w, r, "/admin/users", http.StatusSeeOther)
 	}
