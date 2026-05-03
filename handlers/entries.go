@@ -43,13 +43,18 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		// Check if any items exist for the hint message
+		var itemCount int
+		db.DB.QueryRow(`SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL`).Scan(&itemCount)
+
 		data := map[string]interface{}{
-			"Title":   "Today",
-			"Date":    date,
-			"Summary": summary,
-			"Meals":   []string{"breakfast", "lunch", "dinner", "snack"},
-			"Profile": profile,
-			"User":    user,
+			"Title":    "Today",
+			"Date":     date,
+			"Summary":  summary,
+			"Meals":    []string{"breakfast", "lunch", "dinner", "snack"},
+			"Profile":  profile,
+			"User":     user,
+			"HasItems": itemCount > 0,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {

@@ -116,7 +116,7 @@
             </div>
             <button type="submit" class="btn btn-accent w-100">Add</button>
         </form>
-        {{if and (not .Foods) (not .Ingredients)}}
+        {{if not .HasItems}}
         <p class="text-secondary small mt-2 mb-0">No items yet. <a href="/ingredients/new">Add some ingredients first</a>.</p>
         {{end}}
     </div>

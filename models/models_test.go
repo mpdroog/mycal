@@ -128,6 +128,8 @@ func TestFuzzySearchMatchesTypos(t *testing.T) {
 		"coffe",   // Missing last char
 		"cofee",   // Missing middle char
 		"xoffee",  // Wrong first char
+		"offe",    // Substring via contains fallback
+		"xof",     // "of" substring matches "coffee"
 	}
 
 	for _, q := range queries {

@@ -21,13 +21,24 @@ func Init(dataDir string) error {
 
 	var err error
 
-	DB, err = sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	DB, err = sql.Open("sqlite", dbPath+"?_txlock=immediate")
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
 
+	// Limit connections to avoid SQLite locking issues
+	DB.SetMaxOpenConns(1)
+
 	if err := DB.Ping(); err != nil {
 		return fmt.Errorf("ping database: %w", err)
+	}
+
+	// Set pragmas
+	if _, err := DB.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		return fmt.Errorf("set foreign_keys: %w", err)
+	}
+	if _, err := DB.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		return fmt.Errorf("set busy_timeout: %w", err)
 	}
 
 	// Share DB with models package
