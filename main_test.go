@@ -2,21 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"html/template"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,6 +19,7 @@ import (
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
 	"github.com/mpdroog/mycal/models"
+	"github.com/mpdroog/mycal/tmpl"
 )
 
 var testServer *httptest.Server
@@ -63,7 +58,7 @@ func TestMain(m *testing.M) {
 		VALUES (?, 2000, 150, 250, 65)`, testUser.ID)
 
 	// Setup templates and server
-	tmpls, loadErr := loadTestTemplates()
+	tmpls, loadErr := tmpl.Load("templates", "test")
 	if loadErr != nil {
 		panic(loadErr)
 	}
@@ -76,192 +71,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func loadTestTemplates() (*Templates, error) {
-	funcMap := template.FuncMap{
-		"prevDay": func(date string) string {
-			t, err := time.Parse("2006-01-02", date)
-			if err != nil {
-				return date
-			}
-
-			return t.AddDate(0, 0, -1).Format("2006-01-02")
-		},
-		"nextDay": func(date string) string {
-			t, err := time.Parse("2006-01-02", date)
-			if err != nil {
-				return date
-			}
-
-			return t.AddDate(0, 0, 1).Format("2006-01-02")
-		},
-		"relativeDate": func(date string) string {
-			t, err := time.Parse("2006-01-02", date)
-			if err != nil {
-				return ""
-			}
-
-			now := time.Now()
-			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			target := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
-
-			days := int(target.Sub(today).Hours() / 24)
-
-			switch days {
-			case 0:
-				return "Today"
-			case 1:
-				return "Tomorrow"
-			case -1:
-				return "Yesterday"
-			}
-
-			weekday := t.Weekday().String()
-
-			if days >= 2 && days <= 6 {
-				return weekday
-			}
-
-			if days >= -6 && days <= -2 {
-				return "Last " + weekday
-			}
-
-			if days > 6 && days <= 13 {
-				return "Next " + weekday
-			}
-
-			weeks := days / 7
-			if days < 0 {
-				weeks = (-days) / 7
-				if weeks == 1 {
-					return weekday + ", 1 week ago"
-				}
-
-				return weekday + ", " + strconv.Itoa(weeks) + " weeks ago"
-			}
-
-			if weeks == 1 {
-				return weekday + ", in 1 week"
-			}
-
-			return weekday + ", in " + strconv.Itoa(weeks) + " weeks"
-		},
-		"title": cases.Title(language.English).String,
-		"multiply": func(a int, b float64) int {
-			return int(float64(a) * b)
-		},
-		"divide": func(a, b float64) float64 {
-			if b == 0 {
-				return 0
-			}
-
-			return a / b
-		},
-		"percentage": func(value, goal float64) int {
-			if goal == 0 {
-				return 0
-			}
-
-			pct := (value / goal) * 100
-			if pct > 100 {
-				return 100
-			}
-
-			return int(pct)
-		},
-		"intToFloat": func(i int) float64 {
-			return float64(i)
-		},
-		"multiplyFloat": func(a, b float64) float64 {
-			return a * b
-		},
-		"subtract": func(a, b int) int {
-			return a - b
-		},
-		"version": func() string {
-			return "test"
-		},
-		"json": func(v interface{}) template.JS {
-			b, err := json.Marshal(v)
-			if err != nil {
-				return template.JS("null")
-			}
-			return template.JS(b)
-		},
-	}
-
-	base := filepath.Join("templates", "base.html")
-
-	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "dashboard.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredients.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredient_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foods, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "foods.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foodForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "food_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	entryForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "entry_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "profile.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	login, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "login.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	setup, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "setup.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	adminUsers, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_users.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	adminUserForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_user_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Templates{
-		Dashboard:      dashboard,
-		Ingredients:    ingredients,
-		IngredientForm: ingredientForm,
-		Foods:          foods,
-		FoodForm:       foodForm,
-		EntryForm:      entryForm,
-		Profile:        profile,
-		Login:          login,
-		Setup:          setup,
-		AdminUsers:     adminUsers,
-		AdminUserForm:  adminUserForm,
-	}, nil
-}
-
-func setupRouter(tmpls *Templates) *chi.Mux {
+func setupRouter(tmpls *tmpl.Templates) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	// Inject test user into context for all requests
@@ -798,7 +608,7 @@ func TestAdminCreateUser(t *testing.T) {
 func setupUnauthenticatedServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	tmpls, err := loadTestTemplates()
+	tmpls, err := tmpl.Load("templates", "test")
 	if err != nil {
 		t.Fatalf("Failed to load templates: %v", err)
 	}
@@ -862,7 +672,7 @@ func setupNonAdminServer(t *testing.T) *httptest.Server {
 		t.Fatalf("Failed to create non-admin user: %v", err)
 	}
 
-	tmpls, err := loadTestTemplates()
+	tmpls, err := tmpl.Load("templates", "test")
 	if err != nil {
 		t.Fatalf("Failed to load templates: %v", err)
 	}

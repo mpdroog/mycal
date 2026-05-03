@@ -1,20 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
-	"html/template"
 	"log"
 	"net"
 	"net/http"
-	"path/filepath"
 	"regexp"
-	"strconv"
 	"time"
 
 	"github.com/coreos/go-systemd/v22/daemon"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,6 +16,7 @@ import (
 	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
+	"github.com/mpdroog/mycal/tmpl"
 )
 
 const compressionLevel = 5
@@ -29,209 +24,6 @@ const compressionLevel = 5
 // Version is set at build time via ldflags
 // go build -ldflags "-X main.Version=$(git rev-parse --short HEAD)"
 var Version = "dev"
-
-var funcMap = template.FuncMap{
-	// json safely encodes a value as JSON for embedding in templates.
-	// Use this for data attributes containing structured data.
-	"json": func(v interface{}) template.JS {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return template.JS("null")
-		}
-		return template.JS(b)
-	},
-	"prevDay": func(date string) string {
-		t, err := time.Parse("2006-01-02", date)
-		if err != nil {
-			return date
-		}
-
-		return t.AddDate(0, 0, -1).Format("2006-01-02")
-	},
-	"nextDay": func(date string) string {
-		t, err := time.Parse("2006-01-02", date)
-		if err != nil {
-			return date
-		}
-
-		return t.AddDate(0, 0, 1).Format("2006-01-02")
-	},
-	"relativeDate": func(date string) string {
-		t, err := time.Parse("2006-01-02", date)
-		if err != nil {
-			return ""
-		}
-
-		now := time.Now()
-		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		target := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
-
-		days := int(target.Sub(today).Hours() / 24)
-
-		switch days {
-		case 0:
-			return "Today"
-		case 1:
-			return "Tomorrow"
-		case -1:
-			return "Yesterday"
-		}
-
-		weekday := t.Weekday().String()
-
-		if days >= 2 && days <= 6 {
-			return weekday // "Tuesday" (this week, future)
-		}
-
-		if days >= -6 && days <= -2 {
-			return "Last " + weekday // "Last Tuesday"
-		}
-
-		if days > 6 && days <= 13 {
-			return "Next " + weekday // "Next Tuesday"
-		}
-
-		// For dates further away, show weekday with relative weeks
-		weeks := days / 7
-		if days < 0 {
-			weeks = (-days) / 7
-			if weeks == 1 {
-				return weekday + ", 1 week ago"
-			}
-
-			return weekday + ", " + strconv.Itoa(weeks) + " weeks ago"
-		}
-
-		if weeks == 1 {
-			return weekday + ", in 1 week"
-		}
-
-		return weekday + ", in " + strconv.Itoa(weeks) + " weeks"
-	},
-	"title": cases.Title(language.English).String,
-	"multiply": func(a int, b float64) int {
-		return int(float64(a) * b)
-	},
-	"divide": func(a, b float64) float64 {
-		if b == 0 {
-			return 0
-		}
-
-		return a / b
-	},
-	"percentage": func(value, goal float64) int {
-		if goal == 0 {
-			return 0
-		}
-
-		pct := (value / goal) * 100
-		if pct > 100 {
-			return 100
-		}
-
-		return int(pct)
-	},
-	"intToFloat": func(i int) float64 {
-		return float64(i)
-	},
-	"multiplyFloat": func(a, b float64) float64 {
-		return a * b
-	},
-	"subtract": func(a, b int) int {
-		return a - b
-	},
-	"version": func() string {
-		return Version
-	},
-}
-
-// Templates holds all parsed page templates.
-type Templates struct {
-	Dashboard      *template.Template
-	Ingredients    *template.Template
-	IngredientForm *template.Template
-	Foods          *template.Template
-	FoodForm       *template.Template
-	EntryForm      *template.Template
-	Profile        *template.Template
-	Login          *template.Template
-	Setup          *template.Template
-	AdminUsers     *template.Template
-	AdminUserForm  *template.Template
-}
-
-func loadTemplates() (*Templates, error) {
-	base := filepath.Join("templates", "base.html")
-
-	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "dashboard.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredients.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "ingredient_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foods, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "foods.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foodForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "food_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	entryForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "entry_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "profile.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	login, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "login.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	setup, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "setup.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	adminUsers, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_users.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	adminUserForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join("templates", "admin_user_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Templates{
-		Dashboard:      dashboard,
-		Ingredients:    ingredients,
-		IngredientForm: ingredientForm,
-		Foods:          foods,
-		FoodForm:       foodForm,
-		EntryForm:      entryForm,
-		Profile:        profile,
-		Login:          login,
-		Setup:          setup,
-		AdminUsers:     adminUsers,
-		AdminUserForm:  adminUserForm,
-	}, nil
-}
 
 func main() {
 	addr := flag.String("addr", ":8080", "HTTP listen address")
@@ -256,7 +48,7 @@ func main() {
 	}()
 
 	// Parse templates
-	tmpls, err := loadTemplates()
+	tmpls, err := tmpl.Load("templates", Version)
 	if err != nil {
 		log.Fatalf("Failed to parse templates: %v", err)
 	}

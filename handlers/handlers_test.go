@@ -2,21 +2,15 @@ package handlers_test
 
 import (
 	"context"
-	"html/template"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 
 	"github.com/go-chi/chi/v5"
 
@@ -24,23 +18,14 @@ import (
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/handlers"
 	"github.com/mpdroog/mycal/models"
+	"github.com/mpdroog/mycal/tmpl"
 )
 
 var (
-	testTemplates *TestTemplates
+	testTemplates *tmpl.Templates
 	testRouter    *chi.Mux
 	testUser      *models.User
 )
-
-type TestTemplates struct {
-	Dashboard      *template.Template
-	Ingredients    *template.Template
-	IngredientForm *template.Template
-	Foods          *template.Template
-	FoodForm       *template.Template
-	EntryForm      *template.Template
-	Profile        *template.Template
-}
 
 func TestMain(m *testing.M) {
 	// Create temp directory for test database
@@ -72,8 +57,8 @@ func TestMain(m *testing.M) {
 	_, _ = db.DB.Exec(`INSERT INTO profile (user_id, calories_goal, protein_goal, carbs_goal, fat_goal)
 		VALUES (?, 2000, 150, 250, 65)`, testUser.ID)
 
-	// Load templates
-	testTemplates, err = loadTestTemplates()
+	// Load templates (path relative to handlers/ directory)
+	testTemplates, err = tmpl.Load("../templates", "test")
 	if err != nil {
 		panic(err)
 	}
@@ -82,162 +67,6 @@ func TestMain(m *testing.M) {
 	testRouter = setupTestRouter()
 
 	os.Exit(m.Run())
-}
-
-func loadTestTemplates() (*TestTemplates, error) {
-	funcMap := template.FuncMap{
-		"prevDay": func(date string) string {
-			t, parseErr := time.Parse("2006-01-02", date)
-			if parseErr != nil {
-				return date
-			}
-
-			return t.AddDate(0, 0, -1).Format("2006-01-02")
-		},
-		"nextDay": func(date string) string {
-			t, parseErr := time.Parse("2006-01-02", date)
-			if parseErr != nil {
-				return date
-			}
-
-			return t.AddDate(0, 0, 1).Format("2006-01-02")
-		},
-		"relativeDate": func(date string) string {
-			t, parseErr := time.Parse("2006-01-02", date)
-			if parseErr != nil {
-				return ""
-			}
-
-			now := time.Now()
-			today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-			target := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location())
-
-			days := int(target.Sub(today).Hours() / 24)
-
-			switch days {
-			case 0:
-				return "Today"
-			case 1:
-				return "Tomorrow"
-			case -1:
-				return "Yesterday"
-			}
-
-			weekday := t.Weekday().String()
-
-			if days >= 2 && days <= 6 {
-				return weekday
-			}
-
-			if days >= -6 && days <= -2 {
-				return "Last " + weekday
-			}
-
-			if days > 6 && days <= 13 {
-				return "Next " + weekday
-			}
-
-			weeks := days / 7
-			if days < 0 {
-				weeks = (-days) / 7
-				if weeks == 1 {
-					return weekday + ", 1 week ago"
-				}
-
-				return weekday + ", " + strconv.Itoa(weeks) + " weeks ago"
-			}
-
-			if weeks == 1 {
-				return weekday + ", in 1 week"
-			}
-
-			return weekday + ", in " + strconv.Itoa(weeks) + " weeks"
-		},
-		"title": cases.Title(language.English).String,
-		"multiply": func(a int, b float64) int {
-			return int(float64(a) * b)
-		},
-		"divide": func(a, b float64) float64 {
-			if b == 0 {
-				return 0
-			}
-
-			return a / b
-		},
-		"percentage": func(value, goal float64) int {
-			if goal == 0 {
-				return 0
-			}
-
-			pct := (value / goal) * 100
-			if pct > 100 {
-				return 100
-			}
-
-			return int(pct)
-		},
-		"intToFloat": func(i int) float64 {
-			return float64(i)
-		},
-		"multiplyFloat": func(a, b float64) float64 {
-			return a * b
-		},
-		"subtract": func(a, b int) int {
-			return a - b
-		},
-		"version": func() string {
-			return "test"
-		},
-	}
-
-	// Find templates directory (relative to test location)
-	templatesDir := filepath.Join("..", "templates")
-	base := filepath.Join(templatesDir, "base.html")
-
-	dashboard, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "dashboard.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredients, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "ingredients.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	ingredientForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "ingredient_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foods, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "foods.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	foodForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "food_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	entryForm, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "entry_form.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	profile, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "profile.html"))
-	if err != nil {
-		return nil, err
-	}
-
-	return &TestTemplates{
-		Dashboard:      dashboard,
-		Ingredients:    ingredients,
-		IngredientForm: ingredientForm,
-		Foods:          foods,
-		FoodForm:       foodForm,
-		EntryForm:      entryForm,
-		Profile:        profile,
-	}, nil
 }
 
 func setupTestRouter() *chi.Mux {
@@ -1802,20 +1631,7 @@ func TestSetupBlockedWhenUsersExist(t *testing.T) {
 	// This test verifies that /setup is blocked when users already exist
 	// The test database already has a user created in TestMain
 
-	// Load setup template
-	templatesDir := filepath.Join("..", "templates")
-	base := filepath.Join(templatesDir, "base.html")
-
-	funcMap := template.FuncMap{
-		"version": func() string { return "test" },
-	}
-
-	setupTmpl, err := template.New("").Funcs(funcMap).ParseFiles(base, filepath.Join(templatesDir, "setup.html"))
-	if err != nil {
-		t.Fatalf("Failed to load setup template: %v", err)
-	}
-
-	setupHandler := handlers.Setup(setupTmpl)
+	setupHandler := handlers.Setup(testTemplates.Setup)
 
 	// Test GET /setup - should redirect to /login
 	t.Run("GET redirects to login", func(t *testing.T) {
