@@ -5,8 +5,8 @@ interface SearchItem {
     id: number;
     name: string;
     calories: number;
-    servingType?: "weight" | "unit";
-    servingSize?: string;
+    serving_type?: "weight" | "unit";
+    serving_size?: string;
 }
 
 interface Goals {
@@ -43,54 +43,22 @@ interface PrevTotals {
         }
     });
 
-    // Read configuration from script content
+    // Read goals from config
     const configEl = document.getElementById("dashboardConfig");
-    if (!configEl || !configEl.textContent) return;
+    let goals: Goals = { calories: 2000, protein: 150, carbs: 250, fat: 65 };
 
-    interface DashboardConfig {
-        foods: Array<{ id: number; name: string; calories: number; serving_type: string; serving_size: string }>;
-        ingredients: Array<{ id: number; name: string; calories: number; serving_type: string; serving_size: string }>;
-        goals: Goals;
+    if (configEl?.textContent) {
+        const config = JSON.parse(configEl.textContent) as { goals: Goals };
+        goals = config.goals || goals;
     }
 
-    const config = JSON.parse(configEl.textContent) as DashboardConfig;
-
-    // Build search items from foods and ingredients
-    const searchItems: SearchItem[] = [
-        ...(config.foods || []).map((f) => ({
-            type: "food" as const,
-            id: f.id,
-            name: f.name,
-            calories: f.calories,
-            servingType: f.serving_type as "weight" | "unit",
-            servingSize: f.serving_size
-        })),
-        ...(config.ingredients || []).map((i) => ({
-            type: "ingredient" as const,
-            id: i.id,
-            name: i.name,
-            calories: i.calories,
-            servingType: i.serving_type as "weight" | "unit",
-            servingSize: i.serving_size
-        }))
-    ];
-
-    const goals: Goals = config.goals || {
-        calories: 2000,
-        protein: 150,
-        carbs: 250,
-        fat: 65
-    };
-
-    // Initialize Fuse.js with fuzzy search options
-    const fuse = new Fuse<SearchItem>(searchItems, {
-        keys: ["name"],
-        threshold: 0.4,
-        distance: 100,
-        includeScore: true,
-        minMatchCharLength: 1,
-        ignoreLocation: true
-    });
+    // Fuzzy search via API
+    async function searchItems(query: string): Promise<SearchItem[]> {
+        if (!query.trim()) return [];
+        const res = await fetch(`/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) return [];
+        return res.json() as Promise<SearchItem[]>;
+    }
 
     const itemSearch = document.getElementById("itemSearch") as HTMLInputElement | null;
     const searchResults = document.getElementById("searchResults");
@@ -116,8 +84,8 @@ interface PrevTotals {
         const servingsLabel = document.getElementById("servingsLabel");
 
         if (servingsInput && servingsLabel) {
-            const servingType = item.servingType || "weight";
-            const servingSize = item.servingSize || "100g";
+            const servingType = item.serving_type || "weight";
+            const servingSize = item.serving_size || "100g";
 
             if (servingType === "unit") {
                 servingsInput.value = "1";
@@ -140,8 +108,8 @@ interface PrevTotals {
     }
 
     if (itemSearch && searchResults) {
-        // Debounced search handler to reduce Fuse.js runs on rapid typing
-        const handleSearch = debounce(function(): void {
+        // Debounced search handler using API
+        const handleSearch = debounce(async function(): Promise<void> {
             const query = itemSearch.value.trim();
 
             if (query.length === 0) {
@@ -150,7 +118,7 @@ interface PrevTotals {
                 return;
             }
 
-            const results = fuse.search(query).slice(0, 10);
+            const results = await searchItems(query);
 
             if (results.length === 0) {
                 searchResults.innerHTML = '<div class="p-3 text-secondary">No matches found</div>';
@@ -158,11 +126,10 @@ interface PrevTotals {
                 return;
             }
 
-            searchResults.innerHTML = results.map((result, index) => {
-                const item = result.item;
+            searchResults.innerHTML = results.map((item, index) => {
                 const icon = item.type === "food" ? "\u{1F37D}\u{FE0F}" : "\u{1F957}";
                 const typeLabel = item.type === "food" ? "Food" : "Ingredient";
-                const servingInfo = item.servingSize ? `/${item.servingSize}` : "";
+                const servingInfo = item.serving_size ? `/${item.serving_size}` : "";
                 return `<div class="search-result p-2 border-bottom" data-index="${String(index)}">` +
                     '<div class="d-flex align-items-center gap-2">' +
                     `<span>${icon}</span>` +
@@ -173,8 +140,8 @@ interface PrevTotals {
             }).join("");
 
             searchResults.classList.remove("d-none");
-            searchResults.dataset["results"] = JSON.stringify(results.map((r) => r.item));
-        }, 150);
+            searchResults.dataset["results"] = JSON.stringify(results);
+        }, 200);
         itemSearch.addEventListener("input", handleSearch);
 
         // Handle result click

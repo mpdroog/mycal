@@ -35,22 +35,6 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 
 		summary := getDaySummary(date, user.ID)
 
-		// Get all foods for the dropdown
-		foods, err := getAllFoods()
-		if err != nil {
-			httpError(w, err, http.StatusInternalServerError)
-
-			return
-		}
-
-		// Get all ingredients for the dropdown
-		ingredients, err := GetAllIngredients()
-		if err != nil {
-			httpError(w, err, http.StatusInternalServerError)
-
-			return
-		}
-
 		// Get profile for goals
 		profile, err := GetProfileForUser(user.ID)
 		if err != nil {
@@ -60,14 +44,12 @@ func Dashboard(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		data := map[string]interface{}{
-			"Title":       "Today",
-			"Date":        date,
-			"Summary":     summary,
-			"Foods":       foods,
-			"Ingredients": ingredients,
-			"Meals":       []string{"breakfast", "lunch", "dinner", "snack"},
-			"Profile":     profile,
-			"User":        user,
+			"Title":   "Today",
+			"Date":    date,
+			"Summary": summary,
+			"Meals":   []string{"breakfast", "lunch", "dinner", "snack"},
+			"Profile": profile,
+			"User":    user,
 		}
 
 		if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {

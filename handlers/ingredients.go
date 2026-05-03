@@ -201,7 +201,7 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		_, err = db.DB.Exec(`
+		result, err := db.DB.Exec(`
 			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size, serving_type)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`, form.Name, form.Calories, form.Protein, form.Carbs, form.Fat, form.ServingSize, form.ServingType)
@@ -209,6 +209,11 @@ func CreateIngredient(tmpl *template.Template) http.HandlerFunc {
 			httpError(w, err, http.StatusInternalServerError)
 
 			return
+		}
+
+		// Index for fuzzy search
+		if id, err := result.LastInsertId(); err == nil {
+			_ = models.IndexItem("ingredient", id, form.Name)
 		}
 
 		http.Redirect(w, r, "/ingredients", http.StatusSeeOther)
@@ -279,6 +284,9 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
+		// Re-index for fuzzy search
+		_ = models.IndexItem("ingredient", id, form.Name)
+
 		http.Redirect(w, r, "/ingredients", http.StatusSeeOther)
 	}
 }
@@ -319,6 +327,9 @@ func DeleteIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Remove from search index
+	_ = models.RemoveItemIndex("ingredient", id)
+
 	http.Redirect(w, r, "/ingredients?deleted=ingredient&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
@@ -330,12 +341,21 @@ func RestoreIngredient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get name for re-indexing
+	var name string
+	_ = db.DB.QueryRow("SELECT name FROM ingredients WHERE id = ?", id).Scan(&name)
+
 	// Clear deleted_at to restore
 	_, err = db.DB.Exec("UPDATE ingredients SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 
 		return
+	}
+
+	// Re-index for fuzzy search
+	if name != "" {
+		_ = models.IndexItem("ingredient", id, name)
 	}
 
 	http.Redirect(w, r, "/ingredients", http.StatusSeeOther)
@@ -529,7 +549,7 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Insert new ingredient
-		_, insertErr := db.DB.Exec(`
+		result, insertErr := db.DB.Exec(`
 			INSERT INTO ingredients (name, calories, protein, carbs, fat, serving_size, serving_type)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
 		`, name, calories, protein, carbs, fat, servingSize, servingType)
@@ -538,6 +558,11 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 			skipped++
 
 			continue
+		}
+
+		// Index for fuzzy search
+		if id, err := result.LastInsertId(); err == nil {
+			_ = models.IndexItem("ingredient", id, name)
 		}
 
 		imported++

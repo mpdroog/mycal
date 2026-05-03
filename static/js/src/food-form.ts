@@ -10,6 +10,17 @@ interface IngredientItem {
     serving: string;
 }
 
+interface SearchResult {
+    type: "food" | "ingredient";
+    id: number;
+    name: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+    serving_size: string;
+}
+
 interface IngredientFormData {
     ingredient_id: number;
     amount_grams: number;
@@ -24,44 +35,34 @@ interface RemovedIngredient {
 (function(): void {
     "use strict";
 
-    // Read configuration from script content
-    const configEl = document.getElementById("foodFormConfig");
-    if (!configEl || !configEl.textContent) return;
-
-    interface FoodFormConfig {
-        ingredients: Array<{
-            id: number;
-            name: string;
-            calories: number;
-            protein: number;
-            carbs: number;
-            fat: number;
-            serving_size: string;
-        }>;
+    // Search ingredients via API
+    async function searchIngredients(query: string): Promise<IngredientItem[]> {
+        if (!query.trim()) return [];
+        const res = await fetch(`/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) return [];
+        const results = await res.json() as SearchResult[];
+        // Filter to ingredients only and map to expected format
+        return results
+            .filter((r) => r.type === "ingredient")
+            .map((r) => ({
+                id: r.id,
+                name: r.name,
+                calories: r.calories,
+                protein: r.protein,
+                carbs: r.carbs,
+                fat: r.fat,
+                serving: r.serving_size
+            }));
     }
 
-    const config = JSON.parse(configEl.textContent) as FoodFormConfig;
-
-    // Map to expected format
-    const ingredientsData: IngredientItem[] = (config.ingredients || []).map((i) => ({
-        id: i.id,
-        name: i.name,
-        calories: i.calories,
-        protein: i.protein,
-        carbs: i.carbs,
-        fat: i.fat,
-        serving: i.serving_size
-    }));
-
-    // Initialize Fuse.js
-    const ingredientFuse = new Fuse<IngredientItem>(ingredientsData, {
-        keys: ["name"],
-        threshold: 0.4,
-        distance: 100,
-        includeScore: true,
-        minMatchCharLength: 1,
-        ignoreLocation: true
-    });
+    // Utility: Debounce function
+    function debounce<T extends (...args: unknown[]) => void>(fn: T, delay: number): (...args: Parameters<T>) => void {
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        return function(this: unknown, ...args: Parameters<T>): void {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => { fn.apply(this, args); }, delay);
+        };
+    }
 
     const ingredientsList = document.getElementById("ingredientsList");
     const ingredientSearch = document.getElementById("ingredientSearch") as HTMLInputElement | null;
@@ -220,10 +221,10 @@ interface RemovedIngredient {
         checkForChanges();
     }
 
-    // Search input handler
+    // Search input handler with debouncing
     if (ingredientSearch) {
-        ingredientSearch.addEventListener("input", function(this: HTMLInputElement): void {
-            const query = this.value.trim();
+        const handleSearch = debounce(async function(): Promise<void> {
+            const query = ingredientSearch.value.trim();
 
             if (query.length === 0) {
                 searchResults.classList.add("d-none");
@@ -231,7 +232,7 @@ interface RemovedIngredient {
                 return;
             }
 
-            const results = ingredientFuse.search(query).slice(0, 8);
+            const results = await searchIngredients(query);
 
             if (results.length === 0) {
                 searchResults.innerHTML = '<div class="p-3 text-secondary">No matches found</div>';
@@ -239,8 +240,7 @@ interface RemovedIngredient {
                 return;
             }
 
-            searchResults.innerHTML = results.map((result, index) => {
-                const item = result.item;
+            searchResults.innerHTML = results.map((item, index) => {
                 return `<div class="search-result p-2 border-bottom" data-index="${String(index)}">` +
                     `<div class="fw-medium">${escapeHtml(item.name)}</div>` +
                     `<small class="text-secondary">${String(item.calories)} kcal/${escapeHtml(item.serving)} \u00B7 P: ${String(item.protein)}g C: ${String(item.carbs)}g F: ${String(item.fat)}g</small>` +
@@ -248,8 +248,10 @@ interface RemovedIngredient {
             }).join("");
 
             searchResults.classList.remove("d-none");
-            searchResults.dataset["results"] = JSON.stringify(results.map((r) => r.item));
-        });
+            searchResults.dataset["results"] = JSON.stringify(results);
+        }, 200);
+
+        ingredientSearch.addEventListener("input", handleSearch);
 
         // Handle result click
         searchResults.addEventListener("click", function(this: HTMLElement, e: Event): void {

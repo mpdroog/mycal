@@ -192,19 +192,11 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.GetUserFromContext(r.Context())
 
-		ingredients, err := GetAllIngredients()
-		if err != nil {
-			httpError(w, err, http.StatusInternalServerError)
-
-			return
-		}
-
 		if r.Method == http.MethodGet {
 			data := map[string]interface{}{
-				"Title":       "Add Food",
-				"Food":        models.Food{},
-				"Ingredients": ingredients,
-				"User":        user,
+				"Title": "Add Food",
+				"Food":  models.Food{},
+				"User":  user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -271,6 +263,9 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 			}
 		}
 
+		// Index for fuzzy search
+		_ = models.IndexItem("food", foodID, name)
+
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
 	}
 }
@@ -282,13 +277,6 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
 			http.Error(w, "invalid id", http.StatusBadRequest)
-
-			return
-		}
-
-		ingredients, err := GetAllIngredients()
-		if err != nil {
-			httpError(w, err, http.StatusInternalServerError)
 
 			return
 		}
@@ -308,10 +296,9 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			}
 
 			data := map[string]interface{}{
-				"Title":       "Edit Food",
-				"Food":        food,
-				"Ingredients": ingredients,
-				"User":        user,
+				"Title": "Edit Food",
+				"Food":  food,
+				"User":  user,
 			}
 
 			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
@@ -378,6 +365,9 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			}
 		}
 
+		// Re-index for fuzzy search
+		_ = models.IndexItem("food", id, name)
+
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
 	}
 }
@@ -414,6 +404,9 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Remove from search index
+	_ = models.RemoveItemIndex("food", id)
+
 	http.Redirect(w, r, "/foods?deleted=food&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
@@ -425,12 +418,21 @@ func RestoreFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get name for re-indexing
+	var name string
+	_ = db.DB.QueryRow("SELECT name FROM foods WHERE id = ?", id).Scan(&name)
+
 	// Clear deleted_at to restore
 	_, err = db.DB.Exec("UPDATE foods SET deleted_at = NULL WHERE id = ?", id)
 	if err != nil {
 		httpError(w, err, http.StatusInternalServerError)
 
 		return
+	}
+
+	// Re-index for fuzzy search
+	if name != "" {
+		_ = models.IndexItem("food", id, name)
 	}
 
 	http.Redirect(w, r, "/foods", http.StatusSeeOther)

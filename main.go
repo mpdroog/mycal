@@ -297,6 +297,9 @@ func main() {
 		r.Get("/", handlers.Dashboard(tmpls.Dashboard))
 		r.Post("/logout", handlers.Logout)
 
+		// Unified fuzzy search for foods and ingredients
+		r.Get("/search", handlers.Search)
+
 		// Ingredients (base nutritional items) - shared across all users
 		r.Get("/ingredients", handlers.ListIngredients(tmpls.Ingredients))
 		r.Get("/ingredients/new", handlers.CreateIngredient(tmpls.IngredientForm))

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mpdroog/mycal/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -20,7 +21,7 @@ func Init(dataDir string) error {
 
 	var err error
 
-	DB, err = sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=strict(1)")
+	DB, err = sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
@@ -29,8 +30,20 @@ func Init(dataDir string) error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
+	// Share DB with models package
+	models.DB = DB
+
 	if err := migrate(); err != nil {
 		return fmt.Errorf("migrate: %w", err)
+	}
+
+	// Index existing items for fuzzy search (only if not already indexed)
+	var trigramCount int
+	DB.QueryRow("SELECT COUNT(*) FROM search_trigrams").Scan(&trigramCount)
+	if trigramCount == 0 {
+		if err := models.IndexAllItems(); err != nil {
+			return fmt.Errorf("index items: %w", err)
+		}
 	}
 
 	return nil
@@ -46,6 +59,14 @@ func Close() error {
 
 func migrate() error {
 	migrations := []string{
+		// Search trigrams table for fuzzy search
+		`CREATE TABLE IF NOT EXISTS search_trigrams (
+			trigram TEXT NOT NULL,
+			item_type TEXT NOT NULL,
+			item_id INTEGER NOT NULL,
+			PRIMARY KEY (trigram, item_type, item_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_trigrams_lookup ON search_trigrams(trigram)`,
 		// Ingredients table (base nutritional items)
 		`CREATE TABLE IF NOT EXISTS ingredients (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
