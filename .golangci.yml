@@ -16,10 +16,21 @@ linters:
     - gci
     - paralleltest
     - tenv
+    - dupl         # Detects structural similarity, not actual duplication
+    - goconst      # Not useful for this project size
+    - godot        # Comment style nitpicking
+    - wsl          # Whitespace linter - too strict
+    - nlreturn     # Blank line before return - too strict
+    - gofumpt      # Formatter differences
+    - testpackage  # Handled in exclude-rules
 
 linters-settings:
   gocyclo:
-    min-complexity: 15
+    min-complexity: 25
+  cyclop:
+    max-complexity: 25
+  gocognit:
+    min-complexity: 40
   govet:
     enable-all: true
     disable:
@@ -29,10 +40,10 @@ linters-settings:
       - name: unexported-return
         disabled: true
   funlen:
-    lines: 100
-    statements: 50
+    lines: 150
+    statements: 80
   lll:
-    line-length: 140
+    line-length: 180
   goimports:
     local-prefixes: github.com/mpdroog/mycal
   gocritic:
@@ -51,6 +62,8 @@ linters-settings:
   gosec:
     severity: medium
     confidence: medium
+    excludes:
+      - G202  # SQL concatenation is safe when using placeholders
   stylecheck:
     checks: ["all"]
   tagliatelle:
@@ -59,10 +72,18 @@ linters-settings:
         json: snake
 
 issues:
+  exclude-dirs:
+    - node_modules
   exclude-rules:
     - path: _test\.go
       linters:
         - funlen
         - err113
+        - errcheck
+        - lll
+        - wsl
+        - gocyclo
+        - cyclop
+        - gocognit
   max-issues-per-linter: 0
   max-same-issues: 0

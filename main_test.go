@@ -610,14 +610,6 @@ func TestLoginPageLoads(t *testing.T) {
 
 // TestLoginWithValidCredentials verifies login works with correct credentials
 func TestLoginWithValidCredentials(t *testing.T) {
-	// Create a separate server without auto-injected user for this test
-	tmpDir, err := os.MkdirTemp("", "mycal-login-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-
-	defer os.RemoveAll(tmpDir)
-
 	// We need to test against the main test database since it has our user
 	client := testServer.Client()
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
@@ -861,7 +853,7 @@ func setupUnauthenticatedServer(t *testing.T) *httptest.Server {
 }
 
 // setupNonAdminServer creates a test server with a non-admin user to test admin protection
-func setupNonAdminServer(t *testing.T) (*httptest.Server, *models.User) {
+func setupNonAdminServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
 	// Create non-admin user
@@ -903,7 +895,7 @@ func setupNonAdminServer(t *testing.T) (*httptest.Server, *models.User) {
 		})
 	})
 
-	return httptest.NewServer(r), nonAdminUser
+	return httptest.NewServer(r)
 }
 
 // TestProtectedRoutesRedirectToLogin verifies that protected routes redirect
@@ -1024,7 +1016,7 @@ func TestStaticFilesAccessibleWithoutAuth(t *testing.T) {
 
 // TestAdminRoutesRequireAdmin verifies admin routes return 403 for non-admin users
 func TestAdminRoutesRequireAdmin(t *testing.T) {
-	server, _ := setupNonAdminServer(t)
+	server := setupNonAdminServer(t)
 	defer server.Close()
 
 	client := server.Client()
@@ -1059,7 +1051,7 @@ func TestAdminRoutesRequireAdmin(t *testing.T) {
 
 // TestAdminImportRouteRequiresAdmin verifies admin import route returns 403 for non-admin
 func TestAdminImportRouteRequiresAdmin(t *testing.T) {
-	server, _ := setupNonAdminServer(t)
+	server := setupNonAdminServer(t)
 	defer server.Close()
 
 	client := server.Client()
@@ -1091,7 +1083,7 @@ func TestAdminImportRouteRequiresAdmin(t *testing.T) {
 
 // TestNonAdminCanAccessRegularRoutes verifies non-admin users can access regular routes
 func TestNonAdminCanAccessRegularRoutes(t *testing.T) {
-	server, _ := setupNonAdminServer(t)
+	server := setupNonAdminServer(t)
 	defer server.Close()
 
 	client := server.Client()

@@ -3,11 +3,13 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/mpdroog/mycal/models"
 	_ "modernc.org/sqlite"
+
+	"github.com/mpdroog/mycal/models"
 )
 
 var DB *sql.DB
@@ -37,6 +39,7 @@ func Init(dataDir string) error {
 	if _, err := DB.Exec("PRAGMA foreign_keys = ON"); err != nil {
 		return fmt.Errorf("set foreign_keys: %w", err)
 	}
+
 	if _, err := DB.Exec("PRAGMA busy_timeout = 5000"); err != nil {
 		return fmt.Errorf("set busy_timeout: %w", err)
 	}
@@ -50,7 +53,11 @@ func Init(dataDir string) error {
 
 	// Index existing items for fuzzy search (only if not already indexed)
 	var trigramCount int
-	DB.QueryRow("SELECT COUNT(*) FROM search_trigrams").Scan(&trigramCount)
+
+	if err := DB.QueryRow("SELECT COUNT(*) FROM search_trigrams").Scan(&trigramCount); err != nil {
+		log.Printf("db: count trigrams: %v", err)
+	}
+
 	if trigramCount == 0 {
 		if err := models.IndexAllItems(); err != nil {
 			return fmt.Errorf("index items: %w", err)
@@ -169,32 +176,45 @@ func migrate() error {
 	}
 
 	for _, m := range safeMigrations {
-		// Ignore errors - these are expected if column already exists
-		_, _ = DB.Exec(m)
+		// Errors expected if column already exists - log for debugging
+		if _, err := DB.Exec(m); err != nil {
+			log.Printf("db: safe migration (may be ok): %v", err)
+		}
 	}
 
 	// Migrate profile table to support multiple users
 	// Check if profile table has user_id column
 	var hasUserID int
+
 	err := DB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('profile') WHERE name = 'user_id'`).Scan(&hasUserID)
+
 	if err == nil && hasUserID == 0 {
 		// Need to migrate profile table - create new structure
-		_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS profile_new (
+		if _, err := DB.Exec(`CREATE TABLE IF NOT EXISTS profile_new (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 			calories_goal INTEGER NOT NULL DEFAULT 2000,
 			protein_goal REAL NOT NULL DEFAULT 150,
 			carbs_goal REAL NOT NULL DEFAULT 250,
 			fat_goal REAL NOT NULL DEFAULT 65
-		)`)
+		)`); err != nil {
+			log.Printf("db: create profile_new: %v", err)
+		}
 
 		// Copy existing profile data (will be assigned to first user later)
-		_, _ = DB.Exec(`INSERT INTO profile_new (calories_goal, protein_goal, carbs_goal, fat_goal)
-			SELECT calories_goal, protein_goal, carbs_goal, fat_goal FROM profile WHERE id = 1`)
+		if _, err := DB.Exec(`INSERT INTO profile_new (calories_goal, protein_goal, carbs_goal, fat_goal)
+			SELECT calories_goal, protein_goal, carbs_goal, fat_goal FROM profile WHERE id = 1`); err != nil {
+			log.Printf("db: copy profile data: %v", err)
+		}
 
 		// Drop old table and rename
-		_, _ = DB.Exec(`DROP TABLE IF EXISTS profile`)
-		_, _ = DB.Exec(`ALTER TABLE profile_new RENAME TO profile`)
+		if _, err := DB.Exec(`DROP TABLE IF EXISTS profile`); err != nil {
+			log.Printf("db: drop profile: %v", err)
+		}
+
+		if _, err := DB.Exec(`ALTER TABLE profile_new RENAME TO profile`); err != nil {
+			log.Printf("db: rename profile: %v", err)
+		}
 	}
 
 	return nil

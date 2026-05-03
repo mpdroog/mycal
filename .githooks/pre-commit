@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit hook to run linters and tests
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# Run all checks via make
+make check
+
+echo "All pre-commit checks passed!"

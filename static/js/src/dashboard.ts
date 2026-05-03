@@ -48,8 +48,10 @@ interface PrevTotals {
     let goals: Goals = { calories: 2000, protein: 150, carbs: 250, fat: 65 };
 
     if (configEl?.textContent) {
-        const config = JSON.parse(configEl.textContent) as { goals: Goals };
-        goals = config.goals || goals;
+        const config = JSON.parse(configEl.textContent) as { goals?: Goals };
+        if (config.goals) {
+            goals = config.goals;
+        }
     }
 
     // Fuzzy search via API

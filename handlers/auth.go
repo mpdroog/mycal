@@ -18,9 +18,10 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 		// Block access if setup already completed
 		hasUsers, err := auth.HasUsers()
 		if err != nil {
-			http.Error(w, "Database error", http.StatusInternalServerError)
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
+
 		if hasUsers {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
@@ -30,18 +31,14 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 			data := map[string]interface{}{
 				"Title": "Setup",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
 		// POST - create first admin
-		if err := r.ParseForm(); err != nil {
+		err = r.ParseForm()
+		if err != nil {
 			httpError(w, err, http.StatusBadRequest)
-
 			return
 		}
 
@@ -54,11 +51,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 				"Title": "Setup",
 				"Error": "Username and password are required",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
@@ -67,11 +60,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 				"Title": "Setup",
 				"Error": "Passwords do not match",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
@@ -80,11 +69,7 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 				"Title": "Setup",
 				"Error": "Password must be at least 8 characters",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
@@ -95,27 +80,24 @@ func Setup(tmpl *template.Template) http.HandlerFunc {
 				"Title": "Setup",
 				"Error": "Failed to create user: " + err.Error(),
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
 		// Assign orphaned data to this user
-		_ = auth.AssignOrphanedData(user.ID)
+		if assignErr := auth.AssignOrphanedData(user.ID); assignErr != nil {
+			log.Printf("Setup: failed to assign orphaned data: %v", assignErr)
+		}
 
 		// Create default profile for user if none exists
-		if err := models.CreateDefaultProfile(user.ID); err != nil {
-			log.Printf("Setup: failed to create default profile: %v", err)
+		if profileErr := models.CreateDefaultProfile(user.ID); profileErr != nil {
+			log.Printf("Setup: failed to create default profile: %v", profileErr)
 		}
 
 		// Create session and login
 		sessionID, err := auth.CreateSession(user.ID)
 		if err != nil {
-			http.Error(w, "Failed to create session", http.StatusInternalServerError)
-
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -131,18 +113,14 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 			data := map[string]interface{}{
 				"Title": "Login",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
 		// POST - authenticate
-		if err := r.ParseForm(); err != nil {
-			httpError(w, err, http.StatusBadRequest)
-
+		parseErr := r.ParseForm()
+		if parseErr != nil {
+			httpError(w, parseErr, http.StatusBadRequest)
 			return
 		}
 
@@ -155,18 +133,13 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 				"Title": "Login",
 				"Error": "Invalid username or password",
 			}
-
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
-
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
 		sessionID, err := auth.CreateSession(user.ID)
 		if err != nil {
-			http.Error(w, "Failed to create session", http.StatusInternalServerError)
-
+			httpError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -179,7 +152,10 @@ func Login(tmpl *template.Template) http.HandlerFunc {
 func Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(auth.CookieName)
 	if err == nil {
-		_ = auth.DeleteSession(cookie.Value)
+		delErr := auth.DeleteSession(cookie.Value)
+		if delErr != nil {
+			log.Printf("Logout: failed to delete session: %v", delErr)
+		}
 	}
 
 	auth.ClearSessionCookie(w)

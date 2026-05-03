@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -28,5 +29,12 @@ func httpError(w http.ResponseWriter, err error, code int) {
 		http.Error(w, "Forbidden "+ref, code)
 	default:
 		http.Error(w, "Internal error "+ref, code)
+	}
+}
+
+// renderTemplate executes the base template and logs any error.
+func renderTemplate(w http.ResponseWriter, tmpl *template.Template, data map[string]interface{}) {
+	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
+		httpError(w, err, http.StatusInternalServerError)
 	}
 }

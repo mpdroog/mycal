@@ -80,10 +80,10 @@ func TestGenerateTrigrams(t *testing.T) {
 		expected []string
 	}{
 		{"coffee", []string{"cof", "off", "ffe", "fee"}},
-		{"ab", []string{"ab"}},  // Too short, returns as-is
-		{"a", []string{"a"}},    // Single char
-		{"", nil},               // Empty
-		{"ABC", []string{"abc"}}, // Lowercased
+		{"ab", []string{"ab"}},           // Too short, returns as-is
+		{"a", []string{"a"}},             // Single char
+		{"", nil},                        // Empty
+		{"ABC", []string{"abc"}},         // Lowercased
 		{"Café", []string{"caf", "afe"}}, // Accents removed
 	}
 
@@ -122,14 +122,14 @@ func TestFuzzySearchMatchesTypos(t *testing.T) {
 
 	// Test cases: queries that should match "coffee"
 	queries := []string{
-		"coffee",  // Exact
-		"Coffee",  // Case insensitive
-		"offee",   // Missing first char
-		"coffe",   // Missing last char
-		"cofee",   // Missing middle char
-		"xoffee",  // Wrong first char
-		"offe",    // Substring via contains fallback
-		"xof",     // "of" substring matches "coffee"
+		"coffee", // Exact
+		"Coffee", // Case insensitive
+		"offee",  // Missing first char
+		"coffe",  // Missing last char
+		"cofee",  // Missing middle char
+		"xoffee", // Wrong first char
+		"offe",   // Substring via contains fallback
+		"xof",    // "of" substring matches "coffee"
 	}
 
 	for _, q := range queries {

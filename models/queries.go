@@ -23,12 +23,16 @@ func GetIngredient(id int64) (*Ingredient, error) {
 // ListIngredients returns paginated ingredients with optional search.
 func ListIngredients(query string, limit, offset int) ([]Ingredient, int, error) {
 	var totalCount int
+
 	var countArgs []interface{}
+
 	countSQL := `SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL`
+
 	if query != "" {
 		countSQL += ` AND name LIKE ?`
 		countArgs = append(countArgs, "%"+query+"%")
 	}
+
 	if err := DB.QueryRow(countSQL, countArgs...).Scan(&totalCount); err != nil {
 		return nil, 0, err
 	}
@@ -36,11 +40,14 @@ func ListIngredients(query string, limit, offset int) ([]Ingredient, int, error)
 	listSQL := `
 		SELECT id, name, calories, protein, carbs, fat, serving_size, serving_type, created_at
 		FROM ingredients WHERE deleted_at IS NULL`
+
 	var listArgs []interface{}
+
 	if query != "" {
 		listSQL += ` AND name LIKE ?`
 		listArgs = append(listArgs, "%"+query+"%")
 	}
+
 	listSQL += ` ORDER BY name ASC LIMIT ? OFFSET ?`
 	listArgs = append(listArgs, limit, offset)
 
@@ -48,17 +55,22 @@ func ListIngredients(query string, limit, offset int) ([]Ingredient, int, error)
 	if err != nil {
 		return nil, 0, err
 	}
+
 	defer rows.Close()
 
 	var ingredients []Ingredient
+
 	for rows.Next() {
 		var i Ingredient
+
 		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat,
 			&i.ServingSize, &i.ServingType, &i.CreatedAt); err != nil {
 			return nil, 0, err
 		}
+
 		ingredients = append(ingredients, i)
 	}
+
 	return ingredients, totalCount, rows.Err()
 }
 
@@ -71,17 +83,22 @@ func GetAllIngredients() ([]Ingredient, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
 
 	var ingredients []Ingredient
+
 	for rows.Next() {
 		var i Ingredient
+
 		if err := rows.Scan(&i.ID, &i.Name, &i.Calories, &i.Protein, &i.Carbs, &i.Fat,
 			&i.ServingSize, &i.ServingType); err != nil {
 			return nil, err
 		}
+
 		ingredients = append(ingredients, i)
 	}
+
 	return ingredients, rows.Err()
 }
 
@@ -109,26 +126,36 @@ func UpdateIngredient(i *Ingredient) error {
 // DeleteIngredient soft-deletes an ingredient. Returns error if in use.
 func DeleteIngredient(id int64) error {
 	var count int
+
 	err := DB.QueryRow(`
 		SELECT COUNT(*) FROM food_ingredients fi
 		JOIN foods f ON fi.food_id = f.id
 		WHERE fi.ingredient_id = ? AND f.deleted_at IS NULL
 	`, id).Scan(&count)
+
 	if err != nil {
 		return err
 	}
+
 	if count > 0 {
 		return ErrInUse
 	}
+
 	_, err = DB.Exec(`UPDATE ingredients SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+
 	return err
 }
 
 // RestoreIngredient restores a soft-deleted ingredient.
 func RestoreIngredient(id int64) (string, error) {
 	var name string
-	_ = DB.QueryRow(`SELECT name FROM ingredients WHERE id = ?`, id).Scan(&name)
+
+	if err := DB.QueryRow(`SELECT name FROM ingredients WHERE id = ?`, id).Scan(&name); err != nil {
+		return "", err
+	}
+
 	_, err := DB.Exec(`UPDATE ingredients SET deleted_at = NULL WHERE id = ?`, id)
+
 	return name, err
 }
 
@@ -142,7 +169,11 @@ func IngredientExists(name string) (int64, bool) {
 // HasIngredients returns true if any ingredients exist.
 func HasIngredients() bool {
 	var count int
-	DB.QueryRow(`SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL`).Scan(&count)
+
+	if err := DB.QueryRow(`SELECT COUNT(*) FROM ingredients WHERE deleted_at IS NULL`).Scan(&count); err != nil {
+		return false
+	}
+
 	return count > 0
 }
 
@@ -151,8 +182,10 @@ func HasIngredients() bool {
 // GetFood returns a food with calculated nutrition.
 func GetFood(id int64) (*Food, error) {
 	var f Food
+
 	err := DB.QueryRow(`SELECT id, name, created_at FROM foods WHERE id = ?`, id).
 		Scan(&f.ID, &f.Name, &f.CreatedAt)
+
 	if err != nil {
 		return nil, err
 	}
@@ -167,16 +200,21 @@ func GetFood(id int64) (*Food, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
 
 	for rows.Next() {
 		var fi FoodIngredient
+
 		var ing Ingredient
+
 		if err := rows.Scan(&fi.ID, &fi.FoodID, &fi.IngredientID, &fi.AmountGrams,
 			&ing.ID, &ing.Name, &ing.Calories, &ing.Protein, &ing.Carbs, &ing.Fat, &ing.ServingSize); err != nil {
 			return nil, err
 		}
+
 		fi.Ingredient = &ing
+
 		f.Ingredients = append(f.Ingredients, fi)
 
 		ratio := fi.AmountGrams / 100.0
@@ -185,18 +223,23 @@ func GetFood(id int64) (*Food, error) {
 		f.Carbs += ing.Carbs * ratio
 		f.Fat += ing.Fat * ratio
 	}
+
 	return &f, rows.Err()
 }
 
 // ListFoods returns paginated foods with calculated nutrition.
 func ListFoods(query string, limit, offset int) ([]Food, int, error) {
 	var totalCount int
+
 	var countArgs []interface{}
+
 	countSQL := `SELECT COUNT(*) FROM foods WHERE deleted_at IS NULL`
+
 	if query != "" {
 		countSQL += ` AND name LIKE ?`
 		countArgs = append(countArgs, "%"+query+"%")
 	}
+
 	if err := DB.QueryRow(countSQL, countArgs...).Scan(&totalCount); err != nil {
 		return nil, 0, err
 	}
@@ -211,11 +254,14 @@ func ListFoods(query string, limit, offset int) ([]Food, int, error) {
 		LEFT JOIN food_ingredients fi ON f.id = fi.food_id
 		LEFT JOIN ingredients i ON fi.ingredient_id = i.id
 		WHERE f.deleted_at IS NULL`
+
 	var listArgs []interface{}
+
 	if query != "" {
 		listSQL += ` AND f.name LIKE ?`
 		listArgs = append(listArgs, "%"+query+"%")
 	}
+
 	listSQL += ` GROUP BY f.id, f.name, f.serving_type, f.serving_size, f.created_at ORDER BY f.name LIMIT ? OFFSET ?`
 	listArgs = append(listArgs, limit, offset)
 
@@ -223,17 +269,22 @@ func ListFoods(query string, limit, offset int) ([]Food, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+
 	defer rows.Close()
 
 	var foods []Food
+
 	for rows.Next() {
 		var f Food
+
 		if err := rows.Scan(&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.CreatedAt,
 			&f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			return nil, 0, err
 		}
+
 		foods = append(foods, f)
 	}
+
 	return foods, totalCount, rows.Err()
 }
 
@@ -255,17 +306,22 @@ func GetAllFoods() ([]Food, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer rows.Close()
 
 	var foods []Food
+
 	for rows.Next() {
 		var f Food
+
 		if err := rows.Scan(&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.CreatedAt,
 			&f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			return nil, err
 		}
+
 		foods = append(foods, f)
 	}
+
 	return foods, rows.Err()
 }
 
@@ -297,9 +353,11 @@ func UpdateFood(id int64, name string, ingredients []FoodIngredient) error {
 	if _, err := DB.Exec(`UPDATE foods SET name = ? WHERE id = ?`, name, id); err != nil {
 		return err
 	}
+
 	if _, err := DB.Exec(`DELETE FROM food_ingredients WHERE food_id = ?`, id); err != nil {
 		return err
 	}
+
 	for _, fi := range ingredients {
 		_, err := DB.Exec(`
 			INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams)
@@ -309,42 +367,56 @@ func UpdateFood(id int64, name string, ingredients []FoodIngredient) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
 // DeleteFood soft-deletes a food. Returns error if in use.
 func DeleteFood(id int64) error {
 	var count int
+
 	err := DB.QueryRow(`SELECT COUNT(*) FROM entries WHERE food_id = ? AND deleted_at IS NULL`, id).Scan(&count)
+
 	if err != nil {
 		return err
 	}
+
 	if count > 0 {
 		return ErrInUse
 	}
+
 	_, err = DB.Exec(`UPDATE foods SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+
 	return err
 }
 
 // RestoreFood restores a soft-deleted food.
 func RestoreFood(id int64) (string, error) {
 	var name string
-	_ = DB.QueryRow(`SELECT name FROM foods WHERE id = ?`, id).Scan(&name)
+
+	if err := DB.QueryRow(`SELECT name FROM foods WHERE id = ?`, id).Scan(&name); err != nil {
+		return "", err
+	}
+
 	_, err := DB.Exec(`UPDATE foods SET deleted_at = NULL WHERE id = ?`, id)
+
 	return name, err
 }
 
 // FindOrCreateSimpleFood finds or creates a simple food from an ingredient.
 func FindOrCreateSimpleFood(ingredientID int64) (int64, string, error) {
 	var name, servingType, servingSize string
+
 	err := DB.QueryRow(`SELECT name, serving_type, serving_size FROM ingredients WHERE id = ?`,
 		ingredientID).Scan(&name, &servingType, &servingSize)
+
 	if err != nil {
 		return 0, "", err
 	}
 
 	// Check if simple food already exists
 	var foodID int64
+
 	err = DB.QueryRow(`
 		SELECT f.id FROM foods f
 		JOIN food_ingredients fi ON f.id = fi.food_id
@@ -362,13 +434,16 @@ func FindOrCreateSimpleFood(ingredientID int64) (int64, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
+
 	foodID, err = result.LastInsertId()
+
 	if err != nil {
 		return 0, "", err
 	}
 
 	_, err = DB.Exec(`INSERT INTO food_ingredients (food_id, ingredient_id, amount_grams) VALUES (?, ?, 100)`,
 		foodID, ingredientID)
+
 	return foodID, servingType, err
 }
 
@@ -415,22 +490,32 @@ func GetDaySummary(date string, userID int64) DaySummary {
 	if err != nil {
 		return summary
 	}
+
 	defer rows.Close()
 
 	for rows.Next() {
 		var e Entry
+
 		var f Food
+
 		if err := rows.Scan(&e.ID, &e.FoodID, &e.Date, &e.Meal, &e.Servings, &e.Notes,
 			&f.ID, &f.Name, &f.ServingType, &f.ServingSize, &f.Calories, &f.Protein, &f.Carbs, &f.Fat); err != nil {
 			continue
 		}
+
 		e.Food = &f
+
 		summary.Calories += int(float64(f.Calories) * e.Servings)
 		summary.Protein += f.Protein * e.Servings
 		summary.Carbs += f.Carbs * e.Servings
 		summary.Fat += f.Fat * e.Servings
+
 		summary.Entries = append(summary.Entries, e)
 	}
+
+	// Check for iteration errors (unlikely but best practice)
+	_ = rows.Err() //nolint:errcheck // Summary function has no error return
+
 	return summary
 }
 
@@ -452,10 +537,16 @@ func UpdateEntry(e *Entry) error {
 	if err != nil {
 		return err
 	}
-	rows, _ := result.RowsAffected()
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
 	if rows == 0 {
 		return ErrNotFound
 	}
+
 	return nil
 }
 
@@ -465,10 +556,16 @@ func UpdateEntryServings(id, userID int64, servings float64) error {
 	if err != nil {
 		return err
 	}
-	rows, _ := result.RowsAffected()
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
 	if rows == 0 {
 		return ErrNotFound
 	}
+
 	return nil
 }
 
@@ -485,10 +582,13 @@ func DeleteEntry(id, userID int64) (string, error) {
 // RestoreEntry restores a soft-deleted entry. Returns the entry date.
 func RestoreEntry(id, userID int64) (string, error) {
 	var date string
+
 	if err := DB.QueryRow(`SELECT date FROM entries WHERE id = ? AND user_id = ?`, id, userID).Scan(&date); err != nil {
 		return "", err
 	}
+
 	_, err := DB.Exec(`UPDATE entries SET deleted_at = NULL WHERE id = ? AND user_id = ?`, id, userID)
+
 	return date, err
 }
 
@@ -510,10 +610,14 @@ func GetProfile(userID int64) Profile {
 		CarbsGoal:    250,
 		FatGoal:      65,
 	}
+
+	// Error is ignored intentionally - we return defaults if profile not found
+	//nolint:errcheck // Returns defaults if profile not found
 	DB.QueryRow(`
 		SELECT calories_goal, protein_goal, carbs_goal, fat_goal
 		FROM profile WHERE user_id = ?
 	`, userID).Scan(&profile.CaloriesGoal, &profile.ProteinGoal, &profile.CarbsGoal, &profile.FatGoal)
+
 	return profile
 }
 

@@ -64,7 +64,10 @@ func CreateUser(username, password string, isAdmin bool) (*models.User, error) {
 		return nil, ErrUserExists
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
 
 	return &models.User{ID: id, Username: username, IsAdmin: isAdmin, CreatedAt: time.Now()}, nil
 }

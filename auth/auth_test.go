@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -110,7 +111,7 @@ func TestCreateUserDuplicate(t *testing.T) {
 	}
 
 	_, err = CreateUser("duplicateuser", "password456", false)
-	if err != ErrUserExists {
+	if !errors.Is(err, ErrUserExists) {
 		t.Errorf("Expected ErrUserExists, got: %v", err)
 	}
 }

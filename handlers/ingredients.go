@@ -80,8 +80,9 @@ func ListIngredients(tmpl *template.Template) http.HandlerFunc {
 		user := auth.GetUserFromContext(r.Context())
 
 		query := r.URL.Query().Get("q")
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 {
+
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * itemsPerPage
@@ -181,13 +182,14 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 		}
 
 		if r.Method == http.MethodGet {
-			ingredient, err := models.GetIngredient(id)
-			if errors.Is(err, models.ErrNotFound) {
+			ingredient, getErr := models.GetIngredient(id)
+			if errors.Is(getErr, models.ErrNotFound) {
 				http.NotFound(w, r)
 				return
 			}
-			if err != nil {
-				httpError(w, err, http.StatusInternalServerError)
+
+			if getErr != nil {
+				httpError(w, getErr, http.StatusInternalServerError)
 				return
 			}
 
@@ -196,9 +198,7 @@ func EditIngredient(tmpl *template.Template) http.HandlerFunc {
 				"Ingredient": ingredient,
 				"User":       user,
 			}
-			if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
-				httpError(w, err, http.StatusInternalServerError)
-			}
+			renderTemplate(w, tmpl, data)
 			return
 		}
 
@@ -337,9 +337,10 @@ func ImportIngredients(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		record, err := reader.Read()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+
 		if err != nil {
 			log.Printf("ImportIngredients: error reading row: %v", err)
 			skipped++

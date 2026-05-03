@@ -205,8 +205,10 @@ func UpdateEntryServings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
-		if parseErr := r.ParseForm(); parseErr != nil {
+	multipartErr := r.ParseMultipartForm(1 << 20)
+	if multipartErr != nil {
+		parseErr := r.ParseForm()
+		if parseErr != nil {
 			httpError(w, parseErr, http.StatusBadRequest)
 			return
 		}
@@ -273,17 +275,18 @@ func UpdateEntry(w http.ResponseWriter, r *http.Request) {
 		Notes:    r.FormValue("notes"),
 	}
 
-	if err := models.UpdateEntry(entry); err != nil {
-		if errors.Is(err, models.ErrNotFound) {
+	updateErr := models.UpdateEntry(entry)
+	if updateErr != nil {
+		if errors.Is(updateErr, models.ErrNotFound) {
 			http.Error(w, "entry not found", http.StatusNotFound)
 			return
 		}
-		httpError(w, err, http.StatusInternalServerError)
+		httpError(w, updateErr, http.StatusInternalServerError)
 		return
 	}
 
-	date, _ := models.GetEntryDate(id, user.ID)
-	if date == "" {
+	date, err := models.GetEntryDate(id, user.ID)
+	if err != nil || date == "" {
 		date = time.Now().Format("2006-01-02")
 	}
 

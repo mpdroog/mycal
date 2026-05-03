@@ -19,8 +19,9 @@ func ListFoods(tmpl *template.Template) http.HandlerFunc {
 		user := auth.GetUserFromContext(r.Context())
 
 		query := r.URL.Query().Get("q")
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 {
+
+		page, err := strconv.Atoi(r.URL.Query().Get("page"))
+		if err != nil || page < 1 {
 			page = 1
 		}
 		offset := (page - 1) * itemsPerPage
@@ -108,7 +109,10 @@ func CreateFood(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		_ = models.IndexItem("food", foodID, name)
+		if err := models.IndexItem("food", foodID, name); err != nil {
+			log.Printf("foods: index food: %v", err)
+		}
+
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
 	}
 }
@@ -180,7 +184,10 @@ func EditFood(tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		_ = models.IndexItem("food", id, name)
+		if err := models.IndexItem("food", id, name); err != nil {
+			log.Printf("foods: index food: %v", err)
+		}
+
 		http.Redirect(w, r, "/foods", http.StatusSeeOther)
 	}
 }
@@ -201,7 +208,10 @@ func DeleteFood(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = models.RemoveItemIndex("food", id)
+	if err := models.RemoveItemIndex("food", id); err != nil {
+		log.Printf("foods: remove food index: %v", err)
+	}
+
 	http.Redirect(w, r, "/foods?deleted=food&id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
@@ -219,8 +229,11 @@ func RestoreFood(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if name != "" {
-		_ = models.IndexItem("food", id, name)
+		if err := models.IndexItem("food", id, name); err != nil {
+			log.Printf("foods: index food: %v", err)
+		}
 	}
+
 	http.Redirect(w, r, "/foods", http.StatusSeeOther)
 }
 
