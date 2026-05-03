@@ -1,5 +1,5 @@
 #!/bin/bash
-# Lint HTML templates for CSP violations
+# Lint HTML templates for CSP violations and XSS risks
 TEMPLATES_DIR="templates"
 ERRORS=0
 
@@ -29,8 +29,19 @@ if grep -En '<style>' "$TEMPLATES_DIR"/*.html 2>/dev/null; then
     ERRORS=1
 fi
 
+echo "Checking for unsafe JSON arrays/objects in data attributes..."
+
+# Check for JSON arrays/objects built inline in data attributes (XSS risk)
+# Pattern: data-*='[{ or data-*="[{ - JSON array with objects
+# Single values like data-id="{{.ID}}" are safe (Go templates escape them)
+if grep -En 'data-[a-z-]+=['"'"'"]\[' "$TEMPLATES_DIR"/*.html 2>/dev/null; then
+    echo "^^^ ERROR: JSON arrays built inline in data attributes"
+    echo "    Use the 'json' template function with <script type=\"application/json\"> instead"
+    ERRORS=1
+fi
+
 if [ $ERRORS -eq 0 ]; then
-    echo "OK - No CSP violations found"
+    echo "OK - No CSP violations or XSS risks found"
 fi
 
 exit $ERRORS

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"io"
 	"net/http"
@@ -178,6 +179,13 @@ func loadTestTemplates() (*Templates, error) {
 		},
 		"version": func() string {
 			return "test"
+		},
+		"json": func(v interface{}) template.JS {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return template.JS("null")
+			}
+			return template.JS(b)
 		},
 	}
 

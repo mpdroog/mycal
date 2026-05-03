@@ -24,11 +24,34 @@ interface RemovedIngredient {
 (function(): void {
     "use strict";
 
-    // Read configuration from data attributes
+    // Read configuration from script content
     const configEl = document.getElementById("foodFormConfig");
-    if (!configEl) return;
+    if (!configEl || !configEl.textContent) return;
 
-    const ingredientsData: IngredientItem[] = JSON.parse(configEl.dataset["ingredients"] ?? "[]") as IngredientItem[];
+    interface FoodFormConfig {
+        ingredients: Array<{
+            id: number;
+            name: string;
+            calories: number;
+            protein: number;
+            carbs: number;
+            fat: number;
+            serving_size: string;
+        }>;
+    }
+
+    const config = JSON.parse(configEl.textContent) as FoodFormConfig;
+
+    // Map to expected format
+    const ingredientsData: IngredientItem[] = (config.ingredients || []).map((i) => ({
+        id: i.id,
+        name: i.name,
+        calories: i.calories,
+        protein: i.protein,
+        carbs: i.carbs,
+        fat: i.fat,
+        serving: i.serving_size
+    }));
 
     // Initialize Fuse.js
     const ingredientFuse = new Fuse<IngredientItem>(ingredientsData, {

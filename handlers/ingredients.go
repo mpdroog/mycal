@@ -15,6 +15,7 @@ import (
 	"github.com/mpdroog/mycal/auth"
 	"github.com/mpdroog/mycal/db"
 	"github.com/mpdroog/mycal/models"
+	"github.com/mpdroog/mycal/safehtml"
 )
 
 type ingredientFormData struct {
@@ -365,7 +366,7 @@ func SearchIngredients(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		option := fmt.Sprintf(
+		option := safehtml.Sprintf(
 			`<option value="%d" data-calories="%d" data-protein="%.1f" data-carbs="%.1f" data-fat="%.1f" data-serving-type="%s" data-serving-size="%s">%s (%d kcal/%s)</option>`,
 			i.ID, i.Calories, i.Protein, i.Carbs, i.Fat, i.ServingType, i.ServingSize, i.Name, i.Calories, i.ServingSize,
 		)

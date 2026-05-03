@@ -2,8 +2,8 @@
 
 {{define "content"}}
 <!-- Configuration for JavaScript -->
-<script id="foodFormConfig" type="application/json"
-    data-ingredients='[{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"protein":{{$ing.Protein}},"carbs":{{$ing.Carbs}},"fat":{{$ing.Fat}},"serving":"{{$ing.ServingSize}}"}{{end}}]'>
+<script id="foodFormConfig" type="application/json">
+{"ingredients": {{json .Ingredients}}}
 </script>
 
 <div class="mb-3 d-flex align-items-center gap-2">

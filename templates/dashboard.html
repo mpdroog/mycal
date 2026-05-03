@@ -2,12 +2,17 @@
 
 {{define "content"}}
 <!-- Configuration for JavaScript -->
-<script id="dashboardConfig" type="application/json"
-    data-search-items='[{{range $i, $f := .Foods}}{{if $i}},{{end}}{"type":"food","id":{{$f.ID}},"name":"{{$f.Name}}","calories":{{$f.Calories}},"servingType":"{{$f.ServingType}}","servingSize":"{{$f.ServingSize}}"}{{end}}{{if and .Foods .Ingredients}},{{end}}{{range $i, $ing := .Ingredients}}{{if $i}},{{end}}{"type":"ingredient","id":{{$ing.ID}},"name":"{{$ing.Name}}","calories":{{$ing.Calories}},"servingType":"{{$ing.ServingType}}","servingSize":"{{$ing.ServingSize}}"}{{end}}]'
-    data-goal-calories="{{.Profile.CaloriesGoal}}"
-    data-goal-protein="{{.Profile.ProteinGoal}}"
-    data-goal-carbs="{{.Profile.CarbsGoal}}"
-    data-goal-fat="{{.Profile.FatGoal}}">
+<script id="dashboardConfig" type="application/json">
+{
+    "foods": {{json .Foods}},
+    "ingredients": {{json .Ingredients}},
+    "goals": {
+        "calories": {{.Profile.CaloriesGoal}},
+        "protein": {{.Profile.ProteinGoal}},
+        "carbs": {{.Profile.CarbsGoal}},
+        "fat": {{.Profile.FatGoal}}
+    }
+}
 </script>
 
 <div class="summary-header text-center text-white py-4 rounded-3 mb-3">

@@ -1,4 +1,4 @@
-.PHONY: all build build-js run clean lint lint-fix lint-js lint-js-fix lint-css typecheck test test-cover deps check install-tools
+.PHONY: all build build-js run clean lint lint-fix lint-js lint-js-fix lint-css lint-security typecheck test test-cover deps check install-tools
 
 BINARY=mycal
 CGO_ENABLED=0
@@ -43,6 +43,11 @@ lint-css:
 lint-css-fix:
 	npx stylelint 'static/css/**/*.css' --ignore-pattern '*.min.css' --fix
 
+# Security linting (CSP violations, unsafe HTML sprintf)
+lint-security:
+	./scripts/lint-csp.sh
+	./scripts/lint-html-sprintf.sh
+
 # TypeScript type checking
 typecheck:
 	npx tsc --noEmit
@@ -61,7 +66,7 @@ deps:
 	go mod tidy
 	npm install
 
-check: lint lint-js lint-css typecheck test
+check: lint lint-js lint-css lint-security typecheck test
 	@echo "All checks passed!"
 
 install-tools:

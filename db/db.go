@@ -12,7 +12,7 @@ import (
 var DB *sql.DB
 
 func Init(dataDir string) error {
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
 

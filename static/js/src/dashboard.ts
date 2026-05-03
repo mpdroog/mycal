@@ -43,16 +43,43 @@ interface PrevTotals {
         }
     });
 
-    // Read configuration from data attributes
+    // Read configuration from script content
     const configEl = document.getElementById("dashboardConfig");
-    if (!configEl) return;
+    if (!configEl || !configEl.textContent) return;
 
-    const searchItems: SearchItem[] = JSON.parse(configEl.dataset["searchItems"] ?? "[]") as SearchItem[];
-    const goals: Goals = {
-        calories: parseInt(configEl.dataset["goalCalories"] ?? "2000", 10),
-        protein: parseFloat(configEl.dataset["goalProtein"] ?? "150"),
-        carbs: parseFloat(configEl.dataset["goalCarbs"] ?? "250"),
-        fat: parseFloat(configEl.dataset["goalFat"] ?? "65")
+    interface DashboardConfig {
+        foods: Array<{ id: number; name: string; calories: number; serving_type: string; serving_size: string }>;
+        ingredients: Array<{ id: number; name: string; calories: number; serving_type: string; serving_size: string }>;
+        goals: Goals;
+    }
+
+    const config = JSON.parse(configEl.textContent) as DashboardConfig;
+
+    // Build search items from foods and ingredients
+    const searchItems: SearchItem[] = [
+        ...(config.foods || []).map((f) => ({
+            type: "food" as const,
+            id: f.id,
+            name: f.name,
+            calories: f.calories,
+            servingType: f.serving_type as "weight" | "unit",
+            servingSize: f.serving_size
+        })),
+        ...(config.ingredients || []).map((i) => ({
+            type: "ingredient" as const,
+            id: i.id,
+            name: i.name,
+            calories: i.calories,
+            servingType: i.serving_type as "weight" | "unit",
+            servingSize: i.serving_size
+        }))
+    ];
+
+    const goals: Goals = config.goals || {
+        calories: 2000,
+        protein: 150,
+        carbs: 250,
+        fat: 65
     };
 
     // Initialize Fuse.js with fuzzy search options

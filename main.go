@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"html/template"
 	"log"
@@ -30,6 +31,15 @@ const compressionLevel = 5
 var Version = "dev"
 
 var funcMap = template.FuncMap{
+	// json safely encodes a value as JSON for embedding in templates.
+	// Use this for data attributes containing structured data.
+	"json": func(v interface{}) template.JS {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return template.JS("null")
+		}
+		return template.JS(b)
+	},
 	"prevDay": func(date string) string {
 		t, err := time.Parse("2006-01-02", date)
 		if err != nil {
