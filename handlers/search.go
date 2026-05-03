@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/mpdroog/mycal/models"
@@ -17,11 +16,8 @@ func Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if results == nil {
 		results = []models.SearchItem{}
 	}
-	if err := json.NewEncoder(w).Encode(results); err != nil {
-		httpError(w, err, http.StatusInternalServerError)
-	}
+	writeJSON(w, results)
 }

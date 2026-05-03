@@ -245,11 +245,8 @@ func SearchFoods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	if results == nil {
 		results = []models.SearchItem{}
 	}
-	if err := json.NewEncoder(w).Encode(results); err != nil {
-		log.Printf("SearchFoods encode error: %v", err)
-	}
+	writeJSON(w, results)
 }

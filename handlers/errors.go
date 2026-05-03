@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -36,5 +37,16 @@ func httpError(w http.ResponseWriter, err error, code int) {
 func renderTemplate(w http.ResponseWriter, tmpl *template.Template, data map[string]interface{}) {
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		httpError(w, err, http.StatusInternalServerError)
+	}
+}
+
+// writeJSON encodes data as JSON and writes it to the response.
+// Callers should ensure nil slices are initialized to get [] instead of null.
+func writeJSON(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		_, file, line, _ := runtime.Caller(1)
+		file = filepath.Base(file)
+		log.Printf("JSON encode error [%s:%d]: %v", file, line, err)
 	}
 }
